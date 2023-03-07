@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/lib/modules/5.15.0-60-generic/build/include/generated",
+                "/lib/modules/5.15.0-60-generic/build/arch/x86/include/generated",
+                "/lib/modules/5.15.0-60-generic/build/arch/x86/include",
+                "/lib/modules/5.15.0-60-generic/build/include"
+            ],
+            "defines": [
+                "KBUILD_MODNAME=\"scull\"",
+                "__GNUC__",
+                "__KERNEL__",
+                "MODULE"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-x64",
+            "configurationProvider": "ms-vscode.makefile-tools"
+        }
+    ],
+    "version": 4
+}
