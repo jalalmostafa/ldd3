@@ -4,6 +4,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/slab.h>
+#include <linux/mutex.h>
 
 #include "scull.h"
 #include "scull_fops.h"
@@ -24,6 +25,7 @@ static scull_device_t* devices;
 int scull_major = SCULL_MAJOR;
 int scull_minor = SCULL_MINOR;
 int scull_quantum = SCULL_QUANTUM;
+int scull_qset = SCULL_QSET;
 
 static void scull_exit(void)
 {
@@ -67,6 +69,9 @@ static int __init scull_init(void)
 
     for (i = 0; i < SCULL_COUNT; i++) {
         dev_t mdev = MKDEV(scull_major, scull_minor + i);
+        mutex_init(&devices[i].lock);
+
+        // cdev_setup
         cdev_init(&devices[i].cdev, &fops);
         devices[i].cdev.owner = THIS_MODULE;
         result = cdev_add(&devices[i].cdev, mdev, 1);

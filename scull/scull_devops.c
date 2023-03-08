@@ -20,7 +20,7 @@ int scull_trim(scull_device_t* dev)
     }
 
     dev->data = NULL;
-    dev->qset = 0;
+    dev->qset = scull_qset;
     dev->quantum = scull_quantum;
     dev->size = 0;
 

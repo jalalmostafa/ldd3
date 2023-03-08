@@ -4,6 +4,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/mutex.h>
 
 #define SCULL_NAME "scull"
 #define SCULL_COUNT 4
@@ -27,12 +28,13 @@ typedef struct {
     int qset;
     unsigned long size;
     unsigned int access_key;
-    struct semaphore sem;
+    struct mutex lock;
 } scull_device_t;
 
 extern int scull_major;
 extern int scull_minor;
 extern int scull_quantum;
+extern int scull_qset;
 
 int scull_trim(scull_device_t* dev);
 struct scull_qset* scull_follow(scull_device_t* dev, int n);

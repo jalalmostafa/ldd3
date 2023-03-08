@@ -20,7 +20,7 @@ ssize_t scull_read(struct file* filp, char __user* buf, size_t count, loff_t* f_
     int item, s_pos, q_pos, rest;
     ssize_t retval = 0;
 
-    if (down_interruptible(&dev->sem))
+    if (mutex_lock_interruptible(&dev->lock))
         return -ERESTARTSYS;
 
     if (*f_pos >= dev->size)
@@ -51,7 +51,7 @@ ssize_t scull_read(struct file* filp, char __user* buf, size_t count, loff_t* f_
     *f_pos += count;
     retval = count;
 out:
-    up(&dev->sem);
+    mutex_unlock(&dev->lock);
     return retval;
 }
 
@@ -65,8 +65,10 @@ ssize_t scull_write(struct file* filp, const char __user* buf, size_t count, lof
     ssize_t retval = -ENOMEM; /* value used in "goto out" statements */
 
     printk(SCULL_INFO "dev: %p\n", dev);
-    if (down_interruptible(&dev->sem))
+    if (mutex_lock_interruptible(&dev->lock))
         return -ERESTARTSYS;
+
+    printk(SCULL_INFO "itemsize: %d - Quantum: %d\n", itemsize, quantum);
 
     /* find listitem, qset index and offset in the quantum */
     item = (long)*f_pos / itemsize;
@@ -108,7 +110,7 @@ ssize_t scull_write(struct file* filp, const char __user* buf, size_t count, lof
     if (dev->size < *f_pos)
         dev->size = *f_pos;
 out:
-    up(&dev->sem);
+    mutex_unlock(&dev->lock);
     return retval;
 }
 
@@ -123,13 +125,15 @@ int scull_open(struct inode* inode, struct file* filp)
     filp->private_data = dev;
 
     if ((filp->f_flags & O_ACCMODE) == O_WRONLY) {
+        if (mutex_lock_interruptible(&dev->lock))
+            return -ERESTARTSYS;
         scull_trim(dev);
+        mutex_unlock(&dev->lock);
     }
     return 0;
 }
 
 int scull_release(struct inode* inode, struct file* filp)
 {
-    scull_device_t* dev = filp->private_data;
-    return scull_trim(dev);
+    return 0;
 }

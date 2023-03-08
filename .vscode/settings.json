@@ -4,6 +4,8 @@
         "*.targets": "xml",
         "kdev_t.h": "c",
         "slab.h": "c",
-        "scull.h": "c"
+        "scull.h": "c",
+        "cdev.h": "c",
+        "mutex.h": "c"
     }
 }
