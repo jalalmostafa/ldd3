@@ -41,6 +41,7 @@ int snull_change_mtu(struct net_device* dev, int new_mtu);
 void snull_tx_timeout(struct net_device* dev, unsigned int txqueue);
 struct net_device_stats* snull_get_stats(struct net_device* dev);
 
+void snull_setup_pool(struct net_device* dev);
 void snull_teardown_pool(struct net_device* dev);
 struct snull_packet* snull_get_tx_buffer(struct net_device* dev);
 void snull_release_buffer(struct snull_packet* pkt);

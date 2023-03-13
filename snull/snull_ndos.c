@@ -131,6 +131,12 @@ void snull_tx_timeout(struct net_device* dev, unsigned int txqueue)
     priv->status |= SNULL_TX_INTR;
     snull_interrupt(0, dev, NULL);
     priv->stats.tx_errors++;
+
+    spin_lock(&priv->lock);
+    snull_teardown_pool(dev);
+    snull_setup_pool(dev);
+    spin_unlock(&priv->lock);
+
     netif_wake_queue(dev);
 }
 

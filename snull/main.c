@@ -14,6 +14,7 @@ int timeout;
 int lockup = 0;
 bool use_napi = false;
 snull_interrupt_t snull_interrupt;
+int pool_size = 8;
 
 struct net_device_ops snull_ops = {
     .ndo_open = snull_open,
@@ -28,6 +29,25 @@ struct net_device_ops snull_ops = {
     .ndo_xsk_wakeup = NULL,
     .ndo_xdp_xmit = NULL,
 };
+
+void snull_setup_pool(struct net_device* dev)
+{
+    struct snull_priv* priv = netdev_priv(dev);
+    int i;
+    struct snull_packet* pkt;
+
+    priv->ppool = NULL;
+    for (i = 0; i < pool_size; i++) {
+        pkt = kmalloc(sizeof(struct snull_packet), GFP_KERNEL);
+        if (pkt == NULL) {
+            printk(SNULL_NOTICE "Ran out of memory allocating packet pool\n");
+            return;
+        }
+        pkt->dev = dev;
+        pkt->next = priv->ppool;
+        priv->ppool = pkt;
+    }
+}
 
 void snull_teardown_pool(struct net_device* dev)
 {
@@ -55,7 +75,7 @@ struct snull_packet* snull_get_tx_buffer(struct net_device* dev)
     }
     priv->ppool = pkt->next;
     if (priv->ppool == NULL) {
-        printk(KERN_INFO "Pool empty\n");
+        printk(SNULL_INFO "Pool empty\n");
         netif_stop_queue(dev);
     }
     spin_unlock_irqrestore(&priv->lock, flags);
@@ -270,6 +290,7 @@ static void snull_dev_init(struct net_device* dev)
     }
     spin_lock_init(&priv->lock);
     snull_rx_bottom_ints(dev, 1);
+    snull_setup_pool(dev);
 }
 
 static void snull_exit(void)
