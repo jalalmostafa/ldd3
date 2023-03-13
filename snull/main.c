@@ -276,12 +276,30 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
         snull_release_buffer(pkt);
 }
 
+int snull_header(struct sk_buff* skb, struct net_device* dev,
+    unsigned short type, const void* daddr, const void* saddr,
+    unsigned len)
+{
+    struct ethhdr* eth = (struct ethhdr*)skb_push(skb, ETH_HLEN);
+
+    eth->h_proto = htons(type);
+    memcpy(eth->h_source, saddr ? saddr : dev->dev_addr, dev->addr_len);
+    memcpy(eth->h_dest, daddr ? daddr : dev->dev_addr, dev->addr_len);
+    eth->h_dest[ETH_ALEN - 1] ^= 0x01; /* dest is us xor 1 */
+    return (dev->hard_header_len);
+}
+
+struct header_ops snull_header_ops = {
+    .create = snull_header,
+};
+
 static void snull_dev_init(struct net_device* dev)
 {
     struct snull_priv* priv;
 
     ether_setup(dev);
     dev->netdev_ops = &snull_ops;
+    dev->header_ops = &snull_header_ops;
     dev->watchdog_timeo = timeout;
     dev->flags |= IFF_NOARP;
     dev->features |= NETIF_F_HW_CSUM | NETIF_F_HIGHDMA;
