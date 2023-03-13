@@ -71,13 +71,16 @@ struct snull_packet* snull_get_tx_buffer(struct net_device* dev)
     pkt = priv->ppool;
     if (!pkt) {
         printk(SNULL_DEBUG "Out of Pool\n");
-        return pkt;
+        goto out;
     }
+
     priv->ppool = pkt->next;
     if (priv->ppool == NULL) {
         printk(SNULL_INFO "Pool empty\n");
         netif_stop_queue(dev);
     }
+
+out:
     spin_unlock_irqrestore(&priv->lock, flags);
     return pkt;
 }
@@ -199,7 +202,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet* pkt;
 
-    while (npackets < budget) {
+    while (npackets < budget && priv->rx_queue) {
         pkt = snull_dequeue_buf(dev);
         skb = dev_alloc_skb(pkt->datalen + 2);
 
@@ -253,11 +256,11 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     statusword = priv->status;
     priv->status = 0;
 
-    if (statusword & SNULL_RX_INTR) {
+    if (statusword & SNULL_RX_INTR && napi_schedule_prep(&priv->napi)) {
         // disable bottom interrupts because when there is at least one packet available then no need to fire this again just tell NAPI, at least there is one packet available for fetching.
         snull_rx_bottom_ints(dev, 0);
         // snull_rx call is deffered/scheduled to snull_poll, that is managed by NAPI budget
-        napi_schedule(&priv->napi);
+        __napi_schedule(&priv->napi);
     }
 
     if (statusword & SNULL_TX_INTR) {
