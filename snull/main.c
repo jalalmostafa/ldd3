@@ -20,7 +20,7 @@ struct net_device_ops snull_ops = {
     .ndo_start_xmit = snull_xmit,
     .ndo_tx_timeout = snull_tx_timeout,
     .ndo_get_stats = snull_get_stats,
-    // .ndo_change_mtu = snull_change_mtu,
+    .ndo_change_mtu = snull_change_mtu,
     .ndo_do_ioctl = snull_ioctl,
     .ndo_set_config = snull_config,
     // XDP NDOs

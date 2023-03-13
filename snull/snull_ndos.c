@@ -165,3 +165,19 @@ int snull_config(struct net_device* dev, struct ifmap* map)
     /* ignore other fields */
     return 0;
 }
+
+int snull_change_mtu(struct net_device* dev, int new_mtu)
+{
+    unsigned long flags;
+    struct snull_priv* priv = netdev_priv(dev);
+    spinlock_t* lock = &priv->lock;
+
+    if ((new_mtu < 68) || (new_mtu > 1500))
+        return -EINVAL;
+
+    spin_lock_irqsave(lock, flags);
+    dev->mtu = new_mtu;
+    spin_unlock_irqrestore(lock, flags);
+
+    return 0;
+}
