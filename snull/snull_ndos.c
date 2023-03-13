@@ -9,10 +9,15 @@
 
 int snull_open(struct net_device* dev)
 {
+    struct snull_priv* priv = netdev_priv(dev);
     memcpy(dev->dev_addr, "\0SNUL0", ETH_ALEN);
 
     if (dev == snull_devs[1]) {
         dev->dev_addr[ETH_ALEN - 1]++;
+    }
+
+    if (use_napi) {
+        napi_enable(&priv->napi);
     }
 
     netif_start_queue(dev);
@@ -21,7 +26,14 @@ int snull_open(struct net_device* dev)
 
 int snull_stop(struct net_device* dev)
 {
+    struct snull_priv* priv = netdev_priv(dev);
+
     netif_stop_queue(dev);
+
+    if (use_napi) {
+        napi_disable(&priv->napi);
+    }
+
     return 0;
 }
 
