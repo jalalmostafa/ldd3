@@ -6,6 +6,7 @@
         "slab.h": "c",
         "scull.h": "c",
         "cdev.h": "c",
-        "mutex.h": "c"
+        "mutex.h": "c",
+        "module.h": "c"
     }
 }
