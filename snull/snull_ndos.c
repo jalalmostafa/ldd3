@@ -139,3 +139,29 @@ struct net_device_stats* snull_get_stats(struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     return &priv->stats;
 }
+
+int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd)
+{
+    return 0;
+}
+
+int snull_config(struct net_device* dev, struct ifmap* map)
+{
+    if (dev->flags & IFF_UP) /* can't act on a running interface */
+        return -EBUSY;
+
+    /* Don't allow changing the I/O address */
+    if (map->base_addr != dev->base_addr) {
+        printk(KERN_WARNING "snull: Can't change I/O address\n");
+        return -EOPNOTSUPP;
+    }
+
+    /* Allow changing the IRQ */
+    if (map->irq != dev->irq) {
+        dev->irq = map->irq;
+        /* request_irq() is delayed to open-time */
+    }
+
+    /* ignore other fields */
+    return 0;
+}

@@ -35,7 +35,8 @@ struct snull_priv {
 int snull_open(struct net_device* dev);
 int snull_stop(struct net_device* dev);
 netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev);
-// int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd);
+int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd);
+int snull_config(struct net_device* dev, struct ifmap* map);
 // int snull_change_mtu(struct net_device* dev, int new_mtu);
 void snull_tx_timeout(struct net_device* dev, unsigned int txqueue);
 struct net_device_stats* snull_get_stats(struct net_device* dev);
@@ -52,8 +53,6 @@ extern struct net_device* snull_devs[2];
 extern int timeout;
 extern int lockup;
 extern bool use_napi;
-
-//
 
 #define SNULL_TX_INTR (1 << 0)
 #define SNULL_RX_INTR (1 << 1)
