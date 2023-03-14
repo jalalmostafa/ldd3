@@ -8,7 +8,7 @@
 
 struct snull_packet {
     int datalen;
-    char data[10];
+    char data[ETH_DATA_LEN];
     struct net_device* dev;
     struct snull_packet* next;
 };
