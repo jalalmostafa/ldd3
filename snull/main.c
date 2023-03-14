@@ -12,7 +12,7 @@
 struct net_device* snull_devs[2];
 int timeout;
 int lockup = 0;
-bool use_napi = false;
+bool use_napi = true;
 snull_interrupt_t snull_interrupt;
 int pool_size = 8;
 
