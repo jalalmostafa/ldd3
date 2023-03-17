@@ -5,10 +5,21 @@
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <linux/netdevice.h>
+#include <linux/bpf.h>
+
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
+#define SNULL_TX_INTR (1 << 0)
+#define SNULL_RX_INTR (1 << 1)
+
+#define SNULL_TIMEOUT 5
+#define SNULL_NAPI_WEIGHT 2
+#define SNULL_RX_HEADROOM XDP_PACKET_HEADROOM
+#define SNULL_RX_BUF_MAXSZ (PAGE_SIZE - SNULL_RX_HEADROOM)
 
 struct snull_packet {
     int datalen;
-    char data[ETH_DATA_LEN];
+    char data[PAGE_SIZE];
     struct net_device* dev;
     struct snull_packet* next;
 };
@@ -25,11 +36,6 @@ struct snull_priv {
     spinlock_t lock;
     struct napi_struct napi;
 };
-
-#define SNULL_INFO KERN_INFO "snull: "
-#define SNULL_DEBUG KERN_DEBUG "snull: "
-#define SNULL_ERROR KERN_ERR "snull: "
-#define SNULL_NOTICE KERN_NOTICE "snull: "
 
 // NDOs
 int snull_open(struct net_device* dev);
@@ -55,9 +61,4 @@ extern int timeout;
 extern int lockup;
 extern bool use_napi;
 
-#define SNULL_TX_INTR (1 << 0)
-#define SNULL_RX_INTR (1 << 1)
-
-#define SNULL_TIMEOUT 5
-#define SNULL_NAPI_WEIGHT 2
 #endif

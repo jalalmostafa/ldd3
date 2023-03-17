@@ -40,7 +40,7 @@ void snull_setup_pool(struct net_device* dev)
     for (i = 0; i < pool_size; i++) {
         pkt = kmalloc(sizeof(struct snull_packet), GFP_KERNEL);
         if (pkt == NULL) {
-            printk(SNULL_NOTICE "Ran out of memory allocating packet pool\n");
+            pr_notice("Ran out of memory allocating packet pool\n");
             return;
         }
         pkt->dev = dev;
@@ -70,13 +70,13 @@ struct snull_packet* snull_get_tx_buffer(struct net_device* dev)
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->ppool;
     if (!pkt) {
-        printk(SNULL_DEBUG "Out of Pool\n");
+        pr_debug("Out of Pool\n");
         goto out;
     }
 
     priv->ppool = pkt->next;
     if (priv->ppool == NULL) {
-        printk(SNULL_INFO "Pool empty\n");
+        pr_debug("Pool empty\n");
         netif_stop_queue(dev);
     }
 
@@ -137,7 +137,7 @@ void snull_rx(struct net_device* dev, struct snull_packet* pkt)
     skb = dev_alloc_skb(pkt->datalen + 2);
     if (!skb) {
         if (printk_ratelimit()) {
-            printk(SNULL_NOTICE "rx low on mem - packet dropped\n");
+            pr_notice("rx low on mem - packet dropped\n");
         }
 
         priv->stats.rx_dropped++;
@@ -208,7 +208,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
 
         if (!skb) {
             if (printk_ratelimit())
-                printk(KERN_NOTICE "snull: packet dropped\n");
+                pr_notice("packet dropped\n");
             priv->stats.rx_dropped++;
             snull_release_buffer(pkt);
             continue;
@@ -344,7 +344,7 @@ static int __init snull_init(void)
 
     for (i = 0; i < 2; i++)
         if ((result = register_netdev(snull_devs[i])))
-            printk(SNULL_ERROR "error %i registering device \"%s\"\n",
+            pr_err("error %i registering device \"%s\"\n",
                 result, snull_devs[i]->name);
 
 out:

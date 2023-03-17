@@ -52,7 +52,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     struct snull_packet* tx_buffer;
 
     if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
-        printk(SNULL_ERROR "packet too short (%i octets)\n",
+        pr_err("packet too short (%i octets)\n",
             len);
         return;
     }
@@ -68,11 +68,11 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     ih->check = ip_fast_csum((unsigned char*)ih, ih->ihl);
 
     if (dev == snull_devs[0])
-        printk(SNULL_INFO "%08x:%05i --> %08x:%05i\n",
+        pr_info("%08x:%05i --> %08x:%05i\n",
             ntohl(ih->saddr), ntohs(((struct tcphdr*)(ih + 1))->source),
             ntohl(ih->daddr), ntohs(((struct tcphdr*)(ih + 1))->dest));
     else
-        printk(SNULL_INFO "%08x:%05i <-- %08x:%05i\n",
+        pr_info("%08x:%05i <-- %08x:%05i\n",
             ntohl(ih->daddr), ntohs(((struct tcphdr*)(ih + 1))->dest),
             ntohl(ih->saddr), ntohs(((struct tcphdr*)(ih + 1))->source));
 
@@ -86,7 +86,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     tx_buffer = snull_get_tx_buffer(dev);
 
     if (!tx_buffer) {
-        printk(SNULL_INFO "Out of tx buffer, len is %i\n", len);
+        pr_info("Out of tx buffer, len is %i\n", len);
         return;
     }
 
@@ -106,7 +106,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     if (lockup && ((priv->stats.tx_packets + 1) % lockup) == 0) {
         /* Simulate a dropped transmit interrupt */
         netif_stop_queue(dev);
-        printk(SNULL_INFO "Simulate lockup at %ld, txp %ld\n", jiffies,
+        pr_info("Simulate lockup at %ld, txp %ld\n", jiffies,
             (unsigned long)priv->stats.tx_packets);
     } else
         snull_interrupt(0, dev, NULL);
@@ -139,7 +139,7 @@ void snull_tx_timeout(struct net_device* dev, unsigned int txqueue)
 {
     struct snull_priv* priv = netdev_priv(dev);
     struct netdev_queue* txq = netdev_get_tx_queue(dev, 0);
-    printk(SNULL_DEBUG "Transmit timeout at %ld, latency %ld\n", jiffies, jiffies - txq->trans_start);
+    pr_debug("Transmit timeout at %ld, latency %ld\n", jiffies, jiffies - txq->trans_start);
     priv->status |= SNULL_TX_INTR;
     snull_interrupt(0, dev, NULL);
     priv->stats.tx_errors++;
@@ -170,7 +170,7 @@ int snull_config(struct net_device* dev, struct ifmap* map)
 
     /* Don't allow changing the I/O address */
     if (map->base_addr != dev->base_addr) {
-        printk(KERN_WARNING "snull: Can't change I/O address\n");
+        pr_warn("Can't change I/O address\n");
         return -EOPNOTSUPP;
     }
 
