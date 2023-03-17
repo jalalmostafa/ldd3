@@ -6,6 +6,7 @@
 #include <linux/spinlock.h>
 #include <linux/netdevice.h>
 #include <linux/bpf.h>
+#include <net/xdp.h>
 
 #define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
@@ -24,11 +25,19 @@ struct snull_packet {
     struct snull_packet* next;
 };
 
+struct snull_rxq {
+    struct snull_packet* head;
+    // struct page_pool* ppool;
+    // struct bpf_program* xdp_prog;
+    // struct xdp_rxq_info xdp_rq;
+    // struct xdp_mem_info xdp_mem;
+};
+
 struct snull_priv {
     struct net_device_stats stats;
-    int status;
     struct snull_packet* ppool;
-    struct snull_packet* rx_queue; /* List of incoming packets */
+    struct snull_rxq rxq;
+    int status;
     int rx_int_enabled;
     int tx_packetlen;
     u8* tx_packetdata;

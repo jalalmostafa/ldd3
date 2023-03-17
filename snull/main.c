@@ -104,8 +104,8 @@ void snull_enqueue_buf(struct net_device* dev, struct snull_packet* pkt)
     struct snull_priv* priv = netdev_priv(dev);
 
     spin_lock_irqsave(&priv->lock, flags);
-    pkt->next = priv->rx_queue; /* FIXME - misorders packets */
-    priv->rx_queue = pkt;
+    pkt->next = priv->rxq.head; /* FIXME - misorders packets */
+    priv->rxq.head = pkt;
     spin_unlock_irqrestore(&priv->lock, flags);
 }
 
@@ -116,9 +116,9 @@ struct snull_packet* snull_dequeue_buf(struct net_device* dev)
     unsigned long flags;
 
     spin_lock_irqsave(&priv->lock, flags);
-    pkt = priv->rx_queue;
+    pkt = priv->rxq.head;
     if (pkt != NULL)
-        priv->rx_queue = pkt->next;
+        priv->rxq.head = pkt->next;
     spin_unlock_irqrestore(&priv->lock, flags);
     return pkt;
 }
@@ -173,9 +173,9 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 
     if (statusword & SNULL_RX_INTR) {
         /* send it to snull_rx for handling */
-        pkt = priv->rx_queue;
+        pkt = priv->rxq.head;
         if (pkt) {
-            priv->rx_queue = pkt->next;
+            priv->rxq.head = pkt->next;
             snull_rx(dev, pkt);
         }
     }
@@ -202,7 +202,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet* pkt;
 
-    while (npackets < budget && priv->rx_queue) {
+    while (npackets < budget && priv->rxq.head) {
         pkt = snull_dequeue_buf(dev);
         skb = dev_alloc_skb(pkt->datalen + 2);
 

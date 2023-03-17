@@ -10,6 +10,7 @@
         "module.h": "c",
         "init.h": "c",
         "dma-direction.h": "c",
-        "bpf.h": "c"
+        "bpf.h": "c",
+        "skbuff.h": "c"
     }
 }
