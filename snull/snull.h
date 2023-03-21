@@ -15,19 +15,28 @@
 
 #define SNULL_TIMEOUT 5
 #define SNULL_NAPI_WEIGHT 2
-#define SNULL_RX_HEADROOM XDP_PACKET_HEADROOM
-#define SNULL_RX_BUF_MAXSZ (PAGE_SIZE - SNULL_RX_HEADROOM)
 
-struct snull_packet {
+struct snull_packet_tx {
     int datalen;
     char data[PAGE_SIZE];
     struct net_device* dev;
-    struct snull_packet* next;
+    struct snull_packet_tx* next;
 };
 
+struct snull_packet_rx {
+    int datalen;
+    u8* data;
+    struct net_device* dev;
+    struct page* page;
+    struct snull_packet_rx* next;
+};
+
+#define SNULL_RX_HEADROOM (XDP_PACKET_HEADROOM + sizeof(struct snull_packet_rx))
+#define SNULL_RX_BUF_MAXSZ (PAGE_SIZE - SNULL_RX_HEADROOM)
+
 struct snull_rxq {
-    struct snull_packet* head;
-    // struct page_pool* ppool;
+    struct snull_packet_rx* head;
+    struct page_pool* ppool;
     // struct bpf_program* xdp_prog;
     // struct xdp_rxq_info xdp_rq;
     // struct xdp_mem_info xdp_mem;
@@ -35,7 +44,7 @@ struct snull_rxq {
 
 struct snull_priv {
     struct net_device_stats stats;
-    struct snull_packet* ppool;
+    struct snull_packet_tx* ppool;
     struct snull_rxq rxq;
     int status;
     int rx_int_enabled;
@@ -58,10 +67,12 @@ struct net_device_stats* snull_get_stats(struct net_device* dev);
 
 void snull_setup_pool(struct net_device* dev);
 void snull_teardown_pool(struct net_device* dev);
-struct snull_packet* snull_get_tx_buffer(struct net_device* dev);
-void snull_release_buffer(struct snull_packet* pkt);
-void snull_enqueue_buf(struct net_device* dev, struct snull_packet* pkt);
-struct snull_packet* snull_dequeue_buf(struct net_device* dev);
+struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev);
+void snull_release_tx(struct snull_packet_tx* pkt);
+void snull_release_rx(struct snull_packet_rx* pkt);
+
+void snull_enqueue_buf(struct net_device* dev, struct snull_packet_tx* pkt);
+struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev);
 
 typedef void (*snull_interrupt_t)(int irq, void* dev_id, struct pt_regs* regs);
 extern snull_interrupt_t snull_interrupt;
@@ -69,5 +80,11 @@ extern struct net_device* snull_devs[2];
 extern int timeout;
 extern int lockup;
 extern bool use_napi;
+
+#ifdef DEBUG
+#define PDEBUG(x) pr_debug(x)
+#else
+#define PDEBUG(x)
+#endif
 
 #endif

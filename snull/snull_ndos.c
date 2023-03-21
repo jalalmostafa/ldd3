@@ -49,7 +49,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     struct net_device* dest;
     struct snull_priv* priv;
     u32 *saddr, *daddr;
-    struct snull_packet* tx_buffer;
+    struct snull_packet_tx* tx_buffer;
 
     if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
         pr_err("packet too short (%i octets)\n",
@@ -92,6 +92,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
 
     tx_buffer->datalen = len;
     memcpy(tx_buffer->data, buf, len);
+    // enqueue in destination interface
     snull_enqueue_buf(dest, tx_buffer);
     if (priv->rx_int_enabled) {
         priv->status |= SNULL_RX_INTR;
