@@ -49,6 +49,8 @@ void snull_setup_pool(struct net_device* dev)
         .order = 0,
     };
 
+    pr_debug("run\n");
+
     // initialize tx pool
     priv->ppool = NULL;
     for (i = 0; i < pool_size; i++) {
@@ -70,6 +72,7 @@ void snull_teardown_pool(struct net_device* dev)
 {
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_tx* pkt;
+    pr_debug("run\n");
 
     while ((pkt = priv->ppool)) {
         priv->ppool = pkt->next;
@@ -88,6 +91,8 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     unsigned long flags;
     struct snull_packet_tx* pkt;
+
+    pr_debug("run\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->ppool;
@@ -112,6 +117,8 @@ void snull_release_tx(struct snull_packet_tx* pkt)
     unsigned long flags;
     struct snull_priv* priv = netdev_priv(pkt->dev);
 
+    pr_debug("run\n");
+
     spin_lock_irqsave(&priv->lock, flags);
     pkt->next = priv->ppool;
     priv->ppool = pkt;
@@ -125,6 +132,8 @@ void snull_release_rx(struct snull_packet_rx* pkt)
 {
     unsigned long flags;
     struct snull_priv* priv = netdev_priv(pkt->dev);
+    pr_debug("run\n");
+
 
     if (!priv->rxq.ppool) {
         pr_debug("snull_release_rx null page pool\n");
@@ -147,6 +156,8 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     struct snull_priv* priv = netdev_priv(target);
     struct snull_packet_rx* pkt_rx;
     struct page* page;
+
+    pr_debug("run\n");
 
     if (!priv->rxq.ppool) {
         pr_debug("Null Page Pool\n");
@@ -176,6 +187,7 @@ struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
     unsigned long flags;
+    pr_debug("run\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->rxq.head;
@@ -404,8 +416,6 @@ static int __init snull_init(void)
     int i, result = -ENOMEM;
 
     snull_interrupt = use_napi ? snull_napi_interrupt : snull_regular_interrupt;
-
-    pr_debug("DEBUG INIT\n");
 
     snull_devs[0] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);
     snull_devs[1] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);

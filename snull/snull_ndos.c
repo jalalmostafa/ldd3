@@ -13,6 +13,7 @@ int snull_open(struct net_device* dev)
 {
     struct snull_priv* priv = netdev_priv(dev);
     memcpy(dev->dev_addr, "\0SNUL0", ETH_ALEN);
+    pr_debug("run\n");
 
     if (dev == snull_devs[1]) {
         dev->dev_addr[ETH_ALEN - 1]++;
@@ -29,6 +30,7 @@ int snull_open(struct net_device* dev)
 int snull_stop(struct net_device* dev)
 {
     struct snull_priv* priv = netdev_priv(dev);
+    pr_debug("run\n");
 
     netif_stop_queue(dev);
 
@@ -52,6 +54,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     struct snull_priv* priv;
     u32 *saddr, *daddr;
     struct snull_packet_tx* tx_buffer;
+    pr_debug("run\n");
 
     if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
         pr_err("packet too short (%i octets)\n",
@@ -86,6 +89,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     dest = snull_devs[dev == snull_devs[0] ? 1 : 0];
     priv = netdev_priv(dest);
     tx_buffer = snull_get_tx_buffer(dev);
+    pr_debug("tx_buffer: %p\n", tx_buffer);
 
     if (!tx_buffer) {
         pr_info("Out of tx buffer, len is %i\n", len);
@@ -120,6 +124,7 @@ netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     int len = skb->len;
     char *data = skb->data, shortpkt[ETH_ZLEN];
+    pr_debug("run\n");
 
     if (len < ETH_ZLEN) {
         memset(shortpkt, 0, ETH_ZLEN);
@@ -168,6 +173,8 @@ int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd)
 
 int snull_config(struct net_device* dev, struct ifmap* map)
 {
+    pr_debug("run\n");
+    
     if (dev->flags & IFF_UP) /* can't act on a running interface */
         return -EBUSY;
 
@@ -192,6 +199,7 @@ int snull_change_mtu(struct net_device* dev, int new_mtu)
     unsigned long flags;
     struct snull_priv* priv = netdev_priv(dev);
     spinlock_t* lock = &priv->lock;
+    pr_debug("run\n");
 
     if ((new_mtu < 68) || (new_mtu > 1500))
         return -EINVAL;
