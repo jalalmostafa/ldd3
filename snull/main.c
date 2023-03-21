@@ -403,6 +403,8 @@ static int __init snull_init(void)
 
     snull_interrupt = use_napi ? snull_napi_interrupt : snull_regular_interrupt;
 
+    PDEBUG("DEBUG INIT\n");
+
     snull_devs[0] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);
     snull_devs[1] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);
 

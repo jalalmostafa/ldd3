@@ -1,6 +1,8 @@
 #ifndef _SNULL_H
 #define _SNULL_H
 
+#define DEBUG
+
 #include <linux/module.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
