@@ -112,6 +112,7 @@ void snull_release_tx(struct snull_packet_tx* pkt)
     pkt->next = priv->ppool;
     priv->ppool = pkt;
     spin_unlock_irqrestore(&priv->lock, flags);
+
     if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
         netif_wake_queue(pkt->dev);
 }
@@ -224,29 +225,33 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     priv = netdev_priv(dev);
 
     spin_lock(&priv->lock);
-
     statusword = priv->status;
     priv->status = 0;
+    spin_unlock(&priv->lock);
 
     if (statusword & SNULL_RX_INTR) {
         /* send it to snull_rx for handling */
         pkt = priv->rxq.head;
         if (pkt) {
+            spin_lock(&priv->lock);
             priv->rxq.head = pkt->next;
             snull_rx(dev, pkt);
+            spin_unlock(&priv->lock);
+
             snull_release_rx(pkt);
         }
     }
 
     if (statusword & SNULL_TX_INTR) {
         /* a transmission is over: free the skb */
+        spin_lock(&priv->lock);
         priv->stats.tx_packets++;
         priv->stats.tx_bytes += priv->tx_packetlen;
         dev_kfree_skb(priv->skb);
+        spin_unlock(&priv->lock);
+
         snull_release_tx(priv->ppool);
     }
-
-    spin_unlock(&priv->lock);
 }
 
 static int snull_poll(struct napi_struct* napi, int budget)
@@ -297,7 +302,6 @@ static int snull_poll(struct napi_struct* napi, int budget)
     return npackets;
 }
 
-// FIXME: new rx/tx packets and different release mechanisms
 static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 {
     int statusword;
@@ -313,6 +317,7 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 
     statusword = priv->status;
     priv->status = 0;
+    spin_unlock(&priv->lock);
 
     if (statusword & SNULL_RX_INTR && napi_schedule_prep(&priv->napi)) {
         // disable bottom interrupts because when there is at least one packet available then no need to fire this again just tell NAPI, at least there is one packet available for fetching.
@@ -323,13 +328,14 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 
     if (statusword & SNULL_TX_INTR) {
         /* a transmission is over: free the skb */
+        spin_lock(&priv->lock);
         priv->stats.tx_packets++;
         priv->stats.tx_bytes += priv->tx_packetlen;
-        snull_release_tx(priv->ppool);
         dev_kfree_skb(priv->skb);
-    }
+        spin_unlock(&priv->lock);
 
-    spin_unlock(&priv->lock);
+        snull_release_tx(priv->ppool);
+    }
 }
 
 int snull_header(struct sk_buff* skb, struct net_device* dev,
