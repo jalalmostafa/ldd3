@@ -134,16 +134,16 @@ void snull_release_rx(struct snull_packet_rx* pkt)
     struct snull_priv* priv = netdev_priv(pkt->dev);
     pr_debug("run\n");
 
-
     if (!priv->rxq.ppool) {
         pr_debug("snull_release_rx null page pool\n");
         goto out;
     }
     page_pool_recycle_direct(priv->rxq.ppool, pkt->page);
 
+    pr_debug("page recyled\n");
+
     spin_lock_irqsave(&priv->lock, flags);
-    pkt->next = priv->rxq.head;
-    priv->rxq.head = pkt;
+    priv->rxq.head = pkt->next;
     spin_unlock_irqrestore(&priv->lock, flags);
 out:
     if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
@@ -176,8 +176,10 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     pkt_rx->data = memcpy(((u8*)pkt_rx) + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
     pkt_rx->page = page;
 
+    pr_debug("pkt_rx %p: pkt_rx->data %s - pkt_rx->datalen: %d\n", pkt_rx, pkt_rx->data, pkt_rx->datalen);
+
     spin_lock_irqsave(&priv->lock, flags);
-    pkt_rx->next = priv->rxq.head; /* FIXME - misorders packets */
+    pkt_rx->next = priv->rxq.head;
     priv->rxq.head = pkt_rx;
     spin_unlock_irqrestore(&priv->lock, flags);
 }
@@ -253,7 +255,6 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
             priv->rxq.head = pkt->next;
             snull_rx(dev, pkt);
             spin_unlock(&priv->lock);
-
             snull_release_rx(pkt);
         }
     }
@@ -301,6 +302,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         skb->protocol = eth_type_trans(skb, dev);
         skb->ip_summed = CHECKSUM_UNNECESSARY;
 
+        pr_debug("rx pkt to NAPI\n");
         netif_receive_skb(skb);
 
         priv->stats.rx_packets++;
