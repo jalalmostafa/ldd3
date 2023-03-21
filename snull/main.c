@@ -75,8 +75,10 @@ void snull_teardown_pool(struct net_device* dev)
         /* FIXME - in-flight packets ? */
     }
 
-    page_pool_destroy(priv->rxq.ppool);
-    priv->rxq.ppool = NULL;
+    if (priv->rxq.ppool) {
+        page_pool_destroy(priv->rxq.ppool);
+        priv->rxq.ppool = NULL;
+    }
 }
 
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
