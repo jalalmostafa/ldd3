@@ -130,7 +130,6 @@ void snull_release_tx(struct snull_packet_tx* pkt)
 
 void snull_release_rx(struct snull_packet_rx* pkt)
 {
-    unsigned long flags;
     struct snull_priv* priv = netdev_priv(pkt->dev);
     pr_debug("run\n");
 
@@ -297,6 +296,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         skb->dev = dev;
         skb->protocol = eth_type_trans(skb, dev);
         skb->ip_summed = CHECKSUM_UNNECESSARY;
+        pr_debug("rx skb %p: skb->data %s - skb->datalen: %d\n", skb, skb->data, skb->len);
 
         pr_debug("rx pkt to NAPI\n");
         netif_receive_skb(skb);
