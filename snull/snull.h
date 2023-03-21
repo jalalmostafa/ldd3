@@ -83,10 +83,4 @@ extern int timeout;
 extern int lockup;
 extern bool use_napi;
 
-#ifdef DEBUG
-#define PDEBUG(x...) pr_debug(x)
-#else
-#define PDEBUG(x...)
-#endif
-
 #endif

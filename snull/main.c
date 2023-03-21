@@ -265,11 +265,11 @@ static int snull_poll(struct napi_struct* napi, int budget)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
 
-    PDEBUG("priv->rxq.ppool %p\n", priv->rxq.ppool);
+    pr_debug("priv->rxq.ppool %p\n", priv->rxq.ppool);
 
     while (npackets < budget && priv->rxq.ppool) {
         pkt = snull_dequeue_buf(dev);
-        PDEBUG("rx pkt %p\n", pkt);
+        pr_debug("rx pkt %p\n", pkt);
 
         skb = dev_alloc_skb(pkt->datalen + 2);
 
@@ -403,7 +403,7 @@ static int __init snull_init(void)
 
     snull_interrupt = use_napi ? snull_napi_interrupt : snull_regular_interrupt;
 
-    PDEBUG("DEBUG INIT\n");
+    pr_debug("DEBUG INIT\n");
 
     snull_devs[0] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);
     snull_devs[1] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);
