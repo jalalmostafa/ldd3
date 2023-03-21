@@ -138,13 +138,14 @@ void snull_release_rx(struct snull_packet_rx* pkt)
         pr_debug("snull_release_rx null page pool\n");
         goto out;
     }
-    page_pool_recycle_direct(priv->rxq.ppool, pkt->page);
-
-    pr_debug("page recyled\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     priv->rxq.head = pkt->next;
     spin_unlock_irqrestore(&priv->lock, flags);
+
+    page_pool_recycle_direct(priv->rxq.ppool, pkt->page);
+
+    pr_debug("page recyled\n");
 out:
     if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
         netif_wake_queue(pkt->dev);
