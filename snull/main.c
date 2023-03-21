@@ -121,17 +121,17 @@ void snull_release_rx(struct snull_packet_rx* pkt)
     unsigned long flags;
     struct snull_priv* priv = netdev_priv(pkt->dev);
 
-    spin_lock_irqsave(&priv->lock, flags);
     if (!priv->rxq.ppool) {
         pr_debug("snull_release_rx null page pool\n");
         goto out;
     }
-
     page_pool_recycle_direct(priv->rxq.ppool, pkt->page);
+
+    spin_lock_irqsave(&priv->lock, flags);
     pkt->next = priv->rxq.head;
     priv->rxq.head = pkt;
-out:
     spin_unlock_irqrestore(&priv->lock, flags);
+out:
     if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
         netif_wake_queue(pkt->dev);
 }
@@ -143,16 +143,15 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     struct snull_packet_rx* pkt_rx;
     struct page* page;
 
-    spin_lock_irqsave(&priv->lock, flags);
     if (!priv->rxq.ppool) {
         pr_debug("Null Page Pool\n");
-        goto exit;
+        return;
     }
 
     page = page_pool_dev_alloc_pages(priv->rxq.ppool);
     if (!page) {
         pr_debug("page_pool_dev_alloc_pages returns NULL\n");
-        goto exit;
+        return;
     }
 
     pkt_rx = page_address(page);
@@ -160,9 +159,10 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     pkt_rx->dev = pkt_tx->dev;
     pkt_rx->data = memcpy(((u8*)pkt_rx) + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
     pkt_rx->page = page;
+
+    spin_lock_irqsave(&priv->lock, flags);
     pkt_rx->next = priv->rxq.head; /* FIXME - misorders packets */
     priv->rxq.head = pkt_rx;
-exit:
     spin_unlock_irqrestore(&priv->lock, flags);
 }
 
