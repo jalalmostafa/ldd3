@@ -82,9 +82,9 @@ extern int lockup;
 extern bool use_napi;
 
 #ifdef DEBUG
-#define PDEBUG(x) pr_debug(x)
+#define PDEBUG(x...) pr_debug(x)
 #else
-#define PDEBUG(x)
+#define PDEBUG(x...)
 #endif
 
 #endif

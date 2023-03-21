@@ -263,8 +263,12 @@ static int snull_poll(struct napi_struct* napi, int budget)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
 
+    PDEBUG("priv->rxq.ppool %p\n", priv->rxq.ppool);
+
     while (npackets < budget && priv->rxq.ppool) {
         pkt = snull_dequeue_buf(dev);
+        PDEBUG("rx pkt %p\n", pkt);
+
         skb = dev_alloc_skb(pkt->datalen + 2);
 
         if (!skb) {
