@@ -1,3 +1,5 @@
+#define DEBUG
+
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/module.h>
