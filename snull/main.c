@@ -75,9 +75,11 @@ void snull_teardown_pool(struct net_device* dev)
     pr_debug("run\n");
 
     while ((pkt = priv->ppool)) {
-        priv->ppool = pkt->next;
-        kfree(pkt);
-        /* FIXME - in-flight packets ? */
+        if (pkt) {
+            priv->ppool = pkt->next;
+            kfree(pkt);
+            /* FIXME - in-flight packets ? */
+        }
     }
 
     if (priv->rxq.ppool) {
@@ -168,7 +170,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     pkt_rx->data = memcpy(paddr + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
     pkt_rx->page = page;
 
-    pr_debug("pkt_rx %p: pkt_rx->data %s - pkt_rx->datalen: %d\n", pkt_rx, pkt_rx->data, pkt_rx->datalen);
+    pr_debug("pkt_rx %p: pkt_rx->data %x - pkt_rx->datalen: %d\n", pkt_rx, pkt_rx->data, pkt_rx->datalen);
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt_rx->next = priv->rxq.head;
@@ -212,6 +214,7 @@ void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
         return;
     }
 
+    skb_reserve(skb, 2);
     memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
     skb->dev = dev;
     skb->protocol = eth_type_trans(skb, dev);
@@ -288,7 +291,6 @@ static int snull_poll(struct napi_struct* napi, int budget)
         }
 
         // add 2 bytes to head so it fits in 16bytes and the IP header is aligned on 16bytes
-
         skb_reserve(skb, 2);
         pr_debug("skb_reserve\n");
         memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
