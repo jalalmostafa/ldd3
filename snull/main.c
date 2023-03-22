@@ -163,7 +163,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
         pr_debug("page_pool_dev_alloc_pages returns NULL\n");
         return;
     }
-    paddr = page_address(page);
+    paddr = phys_to_virt(page_to_phys(page));
     pkt_rx = (struct snull_packet_rx*)paddr;
     pkt_rx->datalen = pkt_tx->datalen;
     pkt_rx->dev = target;
@@ -204,7 +204,7 @@ void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
     struct sk_buff* skb;
     struct snull_priv* priv = netdev_priv(dev);
 
-    skb = dev_alloc_skb(pkt->datalen + 2);
+    skb = dev_alloc_skb(pkt->datalen + NET_IP_ALIGN);
     if (!skb) {
         if (printk_ratelimit()) {
             pr_notice("rx low on mem - packet dropped\n");
@@ -214,7 +214,7 @@ void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
         return;
     }
 
-    skb_reserve(skb, 2);
+    skb_reserve(skb, NET_IP_ALIGN);
     memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
     skb->dev = dev;
     skb->protocol = eth_type_trans(skb, dev);
@@ -284,7 +284,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         else
             pr_debug("rx pkt NULL\n");
 
-        skb = dev_alloc_skb(pkt->datalen + 2);
+        skb = dev_alloc_skb(pkt->datalen + NET_IP_ALIGN);
 
         if (!skb) {
             if (printk_ratelimit())
@@ -294,11 +294,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         }
 
         // add 2 bytes to head so it fits in 16bytes and the IP header is aligned on 16bytes
-        skb_reserve(skb, 2);
-        pr_debug("skb_reserve\n");
-        memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
-        pr_debug("memcpy: %d\n", skb->len);
-
+        skb_reserve(skb, NET_IP_ALIGN);
         skb->dev = dev;
         pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
         skb->protocol = eth_type_trans(skb, dev);
@@ -306,7 +302,6 @@ static int snull_poll(struct napi_struct* napi, int budget)
         skb->ip_summed = CHECKSUM_UNNECESSARY;
         pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
 
-        pr_debug("rx pkt to NAPI\n");
         netif_receive_skb(skb);
 
         priv->stats.rx_packets++;
