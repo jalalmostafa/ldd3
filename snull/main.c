@@ -67,6 +67,7 @@ void snull_setup_pool(struct net_device* dev)
 
     // initialize rx pool
     priv->rxq.ppool = page_pool_create(&pp_params);
+    priv->rxq.head = NULL;
 }
 
 void snull_teardown_pool(struct net_device* dev)
@@ -78,6 +79,7 @@ void snull_teardown_pool(struct net_device* dev)
     while ((pkt = priv->ppool)) {
         if (pkt) {
             priv->ppool = pkt->next;
+            pr_debug("kfree pkt: %p\n", pkt);
             kfree(pkt);
             /* FIXME - in-flight packets ? */
         }
@@ -165,6 +167,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
         return;
     }
     paddr = page_address(page);
+    memset(paddr, 0, PAGE_SIZE);
     pkt_rx = (struct snull_packet_rx*)paddr;
     pkt_rx->datalen = pkt_tx->datalen;
     pkt_rx->dev = target;
