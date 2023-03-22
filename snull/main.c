@@ -285,8 +285,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         else
             pr_debug("rx pkt NULL\n");
 
-        skb = dev_alloc_skb(pkt->datalen + 2);
-
+        skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->datalen);
         if (!skb) {
             if (printk_ratelimit())
                 pr_notice("packet dropped\n");
@@ -294,13 +293,9 @@ static int snull_poll(struct napi_struct* napi, int budget)
             goto next;
         }
 
-        // add 2 bytes to head so it fits in 16bytes and the IP header is aligned on 16bytes
-        skb_reserve(skb, 2);
         memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
         pr_debug("rx skb - memcpy: skb->data %x - skb->datalen: %d\n", skb->data, skb->len);
 
-        skb->dev = dev;
-        pr_debug("rx skb - dev : skb->data %x - skb->datalen: %d\n", skb->data, skb->len);
         skb->ip_summed = CHECKSUM_UNNECESSARY;
         pr_debug("rx skb - csum: skb->data %x - skb->datalen: %d\n", skb->data, skb->len);
         skb->protocol = eth_type_trans(skb, dev);
