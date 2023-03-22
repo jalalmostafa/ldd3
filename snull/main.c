@@ -300,7 +300,9 @@ static int snull_poll(struct napi_struct* napi, int budget)
         pr_debug("memcpy: %d\n", skb->len);
 
         skb->dev = dev;
+        pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
         skb->protocol = eth_type_trans(skb, dev);
+        pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
         skb->ip_summed = CHECKSUM_UNNECESSARY;
         pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
 
