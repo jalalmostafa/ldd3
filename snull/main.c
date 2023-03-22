@@ -80,7 +80,7 @@ void snull_teardown_pool(struct net_device* dev)
         if (pkt) {
             priv->ppool = pkt->next;
             pr_debug("kfree pkt: %p\n", pkt);
-            kfree(pkt);
+            // kfree(pkt);
             /* FIXME - in-flight packets ? */
         }
     }
@@ -88,6 +88,7 @@ void snull_teardown_pool(struct net_device* dev)
     if (priv->rxq.ppool) {
         page_pool_destroy(priv->rxq.ppool);
         priv->rxq.ppool = NULL;
+        priv->rxq.head = NULL;
     }
 }
 
@@ -96,8 +97,6 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     unsigned long flags;
     struct snull_packet_tx* pkt;
-
-    pr_debug("run\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->ppool;
@@ -121,8 +120,6 @@ void snull_release_tx(struct snull_packet_tx* pkt)
 {
     unsigned long flags;
     struct snull_priv* priv = netdev_priv(pkt->dev);
-
-    pr_debug("run\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt->next = priv->ppool;
