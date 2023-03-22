@@ -294,7 +294,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         skb_reserve(skb, 2);
         pr_debug("skb_reserve\n");
         memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
-        pr_debug("memcpy\n");
+        pr_debug("memcpy: %d\n", skb->len);
 
         skb->dev = dev;
         skb->protocol = eth_type_trans(skb, dev);
