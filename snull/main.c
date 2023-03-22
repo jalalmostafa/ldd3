@@ -80,7 +80,7 @@ void snull_teardown_pool(struct net_device* dev)
         if (pkt) {
             priv->ppool = pkt->next;
             pr_debug("kfree pkt: %p\n", pkt);
-            // kfree(pkt);
+            kfree(pkt);
             /* FIXME - in-flight packets ? */
         }
     }
