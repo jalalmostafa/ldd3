@@ -279,16 +279,12 @@ static int snull_poll(struct napi_struct* napi, int budget)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
 
-    pr_debug("priv->rxq.ppool %p\n", priv->rxq.ppool);
-
-    while (npackets < budget && priv->rxq.ppool) {
+    while (npackets < budget && priv->rxq.head) {
         pkt = snull_dequeue_buf(dev);
         if (!pkt) {
             pr_debug("rx pkt NULL\n");
             break;
         }
-
-        pr_debug("rx pkt %p: pkt->data %x - pkt->datalen: %d\n", pkt, pkt->data, pkt->datalen);
 
         skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->datalen);
         if (!skb) {
@@ -299,12 +295,8 @@ static int snull_poll(struct napi_struct* napi, int budget)
         }
 
         memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
-        pr_debug("rx skb - memcpy: skb->data %x - skb->datalen: %d\n", skb->data, skb->len);
-
         skb->ip_summed = CHECKSUM_UNNECESSARY;
-        pr_debug("rx skb - csum: skb->data %x - skb->datalen: %d\n", skb->data, skb->len);
         skb->protocol = eth_type_trans(skb, dev);
-        pr_debug("rx skb - protocol: skb->data %x - skb->datalen: %d\n", skb->data, skb->len);
 
         netif_receive_skb(skb);
 
