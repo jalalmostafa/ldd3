@@ -163,7 +163,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
         pr_debug("page_pool_dev_alloc_pages returns NULL\n");
         return;
     }
-    paddr = phys_to_virt(page_to_phys(page));
+    paddr = page_address(page);
     pkt_rx = (struct snull_packet_rx*)paddr;
     pkt_rx->datalen = pkt_tx->datalen;
     pkt_rx->dev = target;
