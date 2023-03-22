@@ -135,14 +135,10 @@ void snull_release_rx(struct snull_packet_rx* pkt)
 
     if (!priv->rxq.ppool) {
         pr_debug("snull_release_rx null page pool\n");
-        goto out;
+        return;
     }
 
     page_pool_recycle_direct(priv->rxq.ppool, pkt->page);
-    pr_debug("page recyled\n");
-out:
-    if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
-        netif_wake_queue(pkt->dev);
 }
 
 void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx)
@@ -151,6 +147,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     struct snull_priv* priv = netdev_priv(target);
     struct snull_packet_rx* pkt_rx;
     struct page* page;
+    u8* paddr;
 
     pr_debug("run\n");
 
@@ -164,11 +161,11 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
         pr_debug("page_pool_dev_alloc_pages returns NULL\n");
         return;
     }
-
-    pkt_rx = page_address(page);
+    paddr = page_address(page);
+    pkt_rx = (struct snull_packet_rx*)paddr;
     pkt_rx->datalen = pkt_tx->datalen;
-    pkt_rx->dev = pkt_tx->dev;
-    pkt_rx->data = memcpy(((u8*)pkt_rx) + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
+    pkt_rx->dev = target;
+    pkt_rx->data = memcpy(paddr + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
     pkt_rx->page = page;
 
     pr_debug("pkt_rx %p: pkt_rx->data %s - pkt_rx->datalen: %d\n", pkt_rx, pkt_rx->data, pkt_rx->datalen);

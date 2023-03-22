@@ -18,7 +18,7 @@
 
 struct snull_packet_tx {
     int datalen;
-    char data[PAGE_SIZE];
+    char data[ETH_DATA_LEN];
     struct net_device* dev;
     struct snull_packet_tx* next;
 };
