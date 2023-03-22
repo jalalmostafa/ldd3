@@ -9,6 +9,7 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <net/page_pool.h>
+#include <linux/skbuff.h>
 
 #include "snull.h"
 
@@ -204,7 +205,7 @@ void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
     struct sk_buff* skb;
     struct snull_priv* priv = netdev_priv(dev);
 
-    skb = dev_alloc_skb(pkt->datalen + NET_IP_ALIGN);
+    skb = dev_alloc_skb(pkt->datalen + 2);
     if (!skb) {
         if (printk_ratelimit()) {
             pr_notice("rx low on mem - packet dropped\n");
@@ -214,7 +215,7 @@ void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
         return;
     }
 
-    skb_reserve(skb, NET_IP_ALIGN);
+    skb_reserve(skb, 2);
     memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
     skb->dev = dev;
     skb->protocol = eth_type_trans(skb, dev);
@@ -284,7 +285,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         else
             pr_debug("rx pkt NULL\n");
 
-        skb = dev_alloc_skb(pkt->datalen + NET_IP_ALIGN);
+        skb = dev_alloc_skb(pkt->datalen + 2);
 
         if (!skb) {
             if (printk_ratelimit())
@@ -294,12 +295,12 @@ static int snull_poll(struct napi_struct* napi, int budget)
         }
 
         // add 2 bytes to head so it fits in 16bytes and the IP header is aligned on 16bytes
-        skb_reserve(skb, NET_IP_ALIGN);
+        skb_reserve(skb, 2);
         skb->dev = dev;
         pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
-        skb->protocol = eth_type_trans(skb, dev);
-        pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
         skb->ip_summed = CHECKSUM_UNNECESSARY;
+        pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
+        skb->protocol = eth_type_trans(skb, dev);
         pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
 
         netif_receive_skb(skb);
