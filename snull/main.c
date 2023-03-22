@@ -288,12 +288,16 @@ static int snull_poll(struct napi_struct* napi, int budget)
         }
 
         // add 2 bytes to head so it fits in 16bytes and the IP header is aligned on 16bytes
+
         skb_reserve(skb, 2);
+        pr_debug("skb_reserve\n");
         memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
+        pr_debug("memcpy\n");
+
         skb->dev = dev;
         skb->protocol = eth_type_trans(skb, dev);
         skb->ip_summed = CHECKSUM_UNNECESSARY;
-        pr_debug("rx skb %p: skb->data %s - skb->datalen: %d\n", skb, skb->data, skb->len);
+        pr_debug("rx skb %p: skb->data %x - skb->datalen: %d\n", skb, skb->data, skb->len);
 
         pr_debug("rx pkt to NAPI\n");
         netif_receive_skb(skb);
@@ -302,6 +306,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
         priv->stats.rx_bytes += pkt->datalen;
 
     next:
+        pr_debug("next\n");
         npackets++;
         snull_release_rx(pkt);
     }
