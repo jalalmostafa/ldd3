@@ -279,7 +279,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
 
     while (npackets < budget && priv->rxq.ppool) {
         pkt = snull_dequeue_buf(dev);
-        pr_debug("rx pkt %p\n", pkt);
+        pr_debug("rx pkt %p: pkt->data %x - pkt->datalen: %d\n", pkt, pkt->data, pkt->datalen);
 
         skb = dev_alloc_skb(pkt->datalen + 2);
 
