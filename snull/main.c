@@ -283,10 +283,12 @@ static int snull_poll(struct napi_struct* napi, int budget)
 
     while (npackets < budget && priv->rxq.ppool) {
         pkt = snull_dequeue_buf(dev);
-        if (pkt)
-            pr_debug("rx pkt %p: pkt->data %x - pkt->datalen: %d\n", pkt, pkt->data, pkt->datalen);
-        else
+        if (!pkt) {
             pr_debug("rx pkt NULL\n");
+            break;
+        }
+
+        pr_debug("rx pkt %p: pkt->data %x - pkt->datalen: %d\n", pkt, pkt->data, pkt->datalen);
 
         skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->datalen);
         if (!skb) {
