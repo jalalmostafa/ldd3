@@ -77,6 +77,7 @@ void snull_teardown_pool(struct net_device* dev)
     pr_debug("run\n");
 
     while ((pkt = priv->txq.ppool)) {
+        pr_debug("kfree pkt %p\n", pkt);
         priv->txq.ppool = pkt->next;
         kfree(pkt);
         /* FIXME - in-flight packets ? */

@@ -81,11 +81,6 @@ static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_devi
             ntohl(ih->daddr), ntohs(((struct tcphdr*)(ih + 1))->dest),
             ntohl(ih->saddr), ntohs(((struct tcphdr*)(ih + 1))->source));
 
-    /*
-     * Ok, now the packet is ready for transmission: first simulate a
-     * receive interrupt on the twin device, then  a
-     * transmission-done on the transmitting device
-     */
     dest = snull_devs[dev == snull_devs[0] ? 1 : 0];
     priv = netdev_priv(dest);
     tx_buffer = snull_get_tx_buffer(dev);
