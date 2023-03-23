@@ -98,9 +98,8 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
     struct snull_packet_tx* pkt;
 
     spin_lock_irqsave(&priv->lock, flags);
-    pr_debug("BEFORE ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
-
     pkt = priv->txq.ppool;
+    pr_debug("BEFORE ppool: %x - head: %x - pkt: %x - pkt->next: %x\n", priv->txq.ppool ?: 1, priv->txq.head, pkt, pkt->next);
     if (!pkt) {
         pr_debug("Out of Pool\n");
         goto out;
@@ -116,7 +115,7 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
     pkt->next = priv->txq.head;
     priv->txq.head = pkt;
 
-    pr_debug("AFTER ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
+    pr_debug("AFTER ppool: %x - head: %x - pkt: %x - pkt->next: %x\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
 out:
     spin_unlock_irqrestore(&priv->lock, flags);
     return pkt;
