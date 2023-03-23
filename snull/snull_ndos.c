@@ -115,7 +115,6 @@ static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_devi
 
 netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev)
 {
-    struct snull_priv* priv = netdev_priv(dev);
     int len = skb->len;
     char *data = skb->data, shortpkt[ETH_ZLEN];
     pr_debug("run\n");
