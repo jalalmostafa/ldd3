@@ -99,7 +99,7 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->txq.ppool;
-    pr_debug("BEFORE ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool ?: 1, priv->txq.head, pkt, pkt->next);
+    pr_debug("BEFORE ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
     if (!pkt) {
         pr_debug("Out of Pool\n");
         goto out;
@@ -356,7 +356,7 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
         priv->stats.tx_bytes += priv->txq.head->datalen;
         dev_kfree_skb(priv->txq.head->skb);
         spin_unlock(&priv->lock);
-        snull_release_tx(priv->txq.ppool);
+        snull_release_tx(priv->txq.head);
     }
 }
 
