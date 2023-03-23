@@ -127,12 +127,12 @@ void snull_release_tx(struct snull_packet_tx* pkt)
     struct snull_priv* priv = netdev_priv(pkt->dev);
 
     spin_lock_irqsave(&priv->lock, flags);
-    pr_debug("BEFORE ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
+    pr_debug("BEFORE ppool: %x - head: %x - pkt: %x - pkt->next: %x\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
 
     priv->txq.head = pkt->next;
     pkt->next = priv->txq.ppool;
     priv->txq.ppool = pkt;
-    pr_debug("AFTER ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
+    pr_debug("AFTER ppool: %x - head: %x - pkt: %x - pkt->next: %x\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
 
     spin_unlock_irqrestore(&priv->lock, flags);
 
