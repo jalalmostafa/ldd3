@@ -41,7 +41,7 @@ int snull_stop(struct net_device* dev)
     return 0;
 }
 
-static void snull_hw_tx(char* buf, int len, struct net_device* dev)
+static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_device* dev)
 {
     /*
      * This function deals with hw details. This interface loops
@@ -89,15 +89,16 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     dest = snull_devs[dev == snull_devs[0] ? 1 : 0];
     priv = netdev_priv(dest);
     tx_buffer = snull_get_tx_buffer(dev);
-    pr_debug("tx_buffer: %p\n", tx_buffer);
 
     if (!tx_buffer) {
         pr_info("Out of tx buffer, len is %i\n", len);
         return;
     }
 
+    tx_buffer->skb = skb;
     tx_buffer->datalen = len;
-    memcpy(tx_buffer->data, buf, len);
+    tx_buffer->data = buf;
+
     // enqueue in destination interface
     snull_enqueue_buf(dest, tx_buffer);
     if (priv->rx_int_enabled) {
@@ -106,8 +107,6 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     }
 
     priv = netdev_priv(dev);
-    priv->tx_packetlen = len;
-    priv->tx_packetdata = buf;
     priv->status |= SNULL_TX_INTR;
 
     if (lockup && ((priv->stats.tx_packets + 1) % lockup) == 0) {
@@ -134,9 +133,8 @@ netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev)
     }
 
     netif_trans_update(dev);
-    priv->skb = skb;
-    snull_hw_tx(data, len, dev);
-    return 0;
+    snull_hw_tx(skb, data, len, dev);
+    return NETDEV_TX_OK;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0)
@@ -174,7 +172,7 @@ int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd)
 int snull_config(struct net_device* dev, struct ifmap* map)
 {
     pr_debug("run\n");
-    
+
     if (dev->flags & IFF_UP) /* can't act on a running interface */
         return -EBUSY;
 

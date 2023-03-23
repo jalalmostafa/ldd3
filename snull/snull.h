@@ -18,8 +18,9 @@
 
 struct snull_packet_tx {
     int datalen;
-    char data[ETH_DATA_LEN];
+    char* data;
     struct net_device* dev;
+    struct sk_buff* skb;
     struct snull_packet_tx* next;
 };
 
@@ -42,15 +43,17 @@ struct snull_rxq {
     // struct xdp_mem_info xdp_mem;
 };
 
+struct snull_txq {
+    struct snull_packet_tx* ppool;
+    struct snull_packet_tx* head;
+};
+
 struct snull_priv {
     struct net_device_stats stats;
-    struct snull_packet_tx* ppool;
     struct snull_rxq rxq;
+    struct snull_txq txq;
     int status;
     int rx_int_enabled;
-    int tx_packetlen;
-    u8* tx_packetdata;
-    struct sk_buff* skb;
     spinlock_t lock;
     struct napi_struct napi;
 };
