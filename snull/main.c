@@ -84,12 +84,6 @@ void snull_teardown_pool(struct net_device* dev)
     priv->txq.head = NULL;
 
     if (priv->rxq.ppool) {
-        while ((pktrx = priv->rxq.head)) {
-            pr_debug("page_pool_release_page pkt %p\n", pktrx);
-            priv->rxq.head = pktrx->next;
-            page_pool_release_page(priv->rxq.ppool, pktrx->page);
-            /* FIXME - in-flight pages ? */
-        }
         page_pool_destroy(priv->rxq.ppool);
         priv->rxq.ppool = NULL;
     }
@@ -154,7 +148,7 @@ void snull_release_rx(struct snull_packet_rx* pkt)
         return;
     }
 
-    page_pool_recycle_direct(priv->rxq.ppool, pkt->page);
+    page_pool_release_page(priv->rxq.ppool, pkt->page);
 }
 
 void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx)
