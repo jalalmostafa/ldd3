@@ -1,11 +1,11 @@
+#include "snull.h"
+
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
-
-#include "snull.h"
 
 int snull_open(struct net_device* dev)
 {
@@ -37,7 +37,7 @@ int snull_stop(struct net_device* dev)
     return 0;
 }
 
-static void snull_hw_tx(char* buf, int len, struct net_device* dev)
+static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_device* dev)
 {
     /*
      * This function deals with hw details. This interface loops
@@ -49,7 +49,7 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     struct net_device* dest;
     struct snull_priv* priv;
     u32 *saddr, *daddr;
-    struct snull_packet* tx_buffer;
+    struct snull_packet_tx* tx_buffer;
 
     if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
         pr_err("packet too short (%i octets)\n",
@@ -76,11 +76,6 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
             ntohl(ih->daddr), ntohs(((struct tcphdr*)(ih + 1))->dest),
             ntohl(ih->saddr), ntohs(((struct tcphdr*)(ih + 1))->source));
 
-    /*
-     * Ok, now the packet is ready for transmission: first simulate a
-     * receive interrupt on the twin device, then  a
-     * transmission-done on the transmitting device
-     */
     dest = snull_devs[dev == snull_devs[0] ? 1 : 0];
     priv = netdev_priv(dest);
     tx_buffer = snull_get_tx_buffer(dev);
@@ -90,8 +85,11 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
         return;
     }
 
+    tx_buffer->skb = skb;
     tx_buffer->datalen = len;
-    memcpy(tx_buffer->data, buf, len);
+    tx_buffer->data = buf;
+
+    // enqueue in destination interface
     snull_enqueue_buf(dest, tx_buffer);
     if (priv->rx_int_enabled) {
         priv->status |= SNULL_RX_INTR;
@@ -99,8 +97,6 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
     }
 
     priv = netdev_priv(dev);
-    priv->tx_packetlen = len;
-    priv->tx_packetdata = buf;
     priv->status |= SNULL_TX_INTR;
 
     if (lockup && ((priv->stats.tx_packets + 1) % lockup) == 0) {
@@ -114,9 +110,9 @@ static void snull_hw_tx(char* buf, int len, struct net_device* dev)
 
 netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev)
 {
-    struct snull_priv* priv = netdev_priv(dev);
     int len = skb->len;
     char *data = skb->data, shortpkt[ETH_ZLEN];
+    pr_debug("run\n");
 
     if (len < ETH_ZLEN) {
         memset(shortpkt, 0, ETH_ZLEN);
@@ -126,9 +122,8 @@ netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev)
     }
 
     netif_trans_update(dev);
-    priv->skb = skb;
-    snull_hw_tx(data, len, dev);
-    return 0;
+    snull_hw_tx(skb, data, len, dev);
+    return NETDEV_TX_OK;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0)
@@ -165,6 +160,8 @@ int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd)
 
 int snull_config(struct net_device* dev, struct ifmap* map)
 {
+    pr_debug("run\n");
+
     if (dev->flags & IFF_UP) /* can't act on a running interface */
         return -EBUSY;
 
@@ -198,4 +195,37 @@ int snull_change_mtu(struct net_device* dev, int new_mtu)
     spin_unlock_irqrestore(lock, flags);
 
     return 0;
+}
+
+static int snull_xdp_set(struct net_device* dev, struct netdev_bpf* bpf)
+{
+    if (dev->mtu > SNULL_RX_BUF_MAXSZ) {
+        pr_warn("MTU %u is too big. Must be less then or equal to %lu\n", dev->mtu, SNULL_RX_BUF_MAXSZ);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+int snull_xdp(struct net_device* dev, struct netdev_bpf* bpf)
+{
+    switch (bpf->command) {
+    case XDP_SETUP_PROG:
+        return snull_xdp_set(dev, bpf);
+    case XDP_SETUP_XSK_POOL:
+    default:
+        break;
+    }
+
+    return -EINVAL;
+}
+
+int snull_xdp_xmit(struct net_device* dev, int n, struct xdp_frame** xdp, u32 flags)
+{
+    return -EINVAL;
+}
+
+int snull_xsk_wakeup(struct net_device* dev, u32 queue_id, u32 flags)
+{
+    return -EINVAL;
 }

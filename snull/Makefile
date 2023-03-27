@@ -1,3 +1,14 @@
+DEBUG = y
+
+ifeq ($(DEBUG),y)
+  DEBFLAGS = -O -g -DSNULL_DEBUG # "-O" is needed to expand inlines
+else
+  DEBFLAGS = -O2
+endif
+
+EXTRA_CFLAGS += $(DEBFLAGS)
+EXTRA_CFLAGS += -I..
+
 ifneq ($(KERNELRELEASE),)
 	obj-m := snull.o
 	snull-objs := main.o snull_ndos.o

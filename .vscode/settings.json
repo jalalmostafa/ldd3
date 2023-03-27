@@ -11,6 +11,9 @@
         "init.h": "c",
         "dma-direction.h": "c",
         "bpf.h": "c",
-        "skbuff.h": "c"
+        "skbuff.h": "c",
+        "netdevice.h": "c",
+        "ip.h": "c",
+        "tcp.h": "c"
     }
 }
