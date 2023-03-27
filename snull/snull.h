@@ -1,5 +1,8 @@
 #ifndef _SNULL_H
 #define _SNULL_H
+#define DEBUG
+
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
 #include <linux/module.h>
 #include <linux/skbuff.h>
@@ -7,8 +10,6 @@
 #include <linux/netdevice.h>
 #include <linux/bpf.h>
 #include <net/xdp.h>
-
-#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
 
 #define SNULL_TX_INTR (1 << 0)
 #define SNULL_RX_INTR (1 << 1)
@@ -38,9 +39,8 @@ struct snull_packet_rx {
 struct snull_rxq {
     struct snull_packet_rx* head;
     struct page_pool* ppool;
-    // struct bpf_program* xdp_prog;
-    // struct xdp_rxq_info xdp_rq;
-    // struct xdp_mem_info xdp_mem;
+    struct bpf_program* xdp_prog;
+    struct xdp_rxq_info xdp_rq;
 };
 
 struct snull_txq {
@@ -67,8 +67,11 @@ int snull_config(struct net_device* dev, struct ifmap* map);
 int snull_change_mtu(struct net_device* dev, int new_mtu);
 void snull_tx_timeout(struct net_device* dev, unsigned int txqueue);
 struct net_device_stats* snull_get_stats(struct net_device* dev);
+int snull_xdp(struct net_device* dev, struct netdev_bpf* bpf);
+int snull_xdp_xmit(struct net_device* dev, int n, struct xdp_frame** xdp, u32 flags);
+int snull_xsk_wakeup(struct net_device* dev, u32 queue_id, u32 flags);
 
-void snull_setup_pool(struct net_device* dev);
+int snull_setup_pool(struct net_device* dev);
 void snull_teardown_pool(struct net_device* dev);
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev);
 void snull_release_tx(struct snull_packet_tx* pkt);

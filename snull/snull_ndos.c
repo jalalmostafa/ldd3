@@ -1,4 +1,4 @@
-#define DEBUG
+#include "snull.h"
 
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
@@ -7,13 +7,10 @@
 #include <linux/ip.h>
 #include <linux/tcp.h>
 
-#include "snull.h"
-
 int snull_open(struct net_device* dev)
 {
     struct snull_priv* priv = netdev_priv(dev);
     memcpy(dev->dev_addr, "\0SNUL0", ETH_ALEN);
-    pr_debug("run\n");
 
     if (dev == snull_devs[1]) {
         dev->dev_addr[ETH_ALEN - 1]++;
@@ -30,7 +27,6 @@ int snull_open(struct net_device* dev)
 int snull_stop(struct net_device* dev)
 {
     struct snull_priv* priv = netdev_priv(dev);
-    pr_debug("run\n");
 
     netif_stop_queue(dev);
 
@@ -54,7 +50,6 @@ static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_devi
     struct snull_priv* priv;
     u32 *saddr, *daddr;
     struct snull_packet_tx* tx_buffer;
-    pr_debug("run\n");
 
     if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
         pr_err("packet too short (%i octets)\n",
@@ -191,7 +186,6 @@ int snull_change_mtu(struct net_device* dev, int new_mtu)
     unsigned long flags;
     struct snull_priv* priv = netdev_priv(dev);
     spinlock_t* lock = &priv->lock;
-    pr_debug("run\n");
 
     if ((new_mtu < 68) || (new_mtu > 1500))
         return -EINVAL;
@@ -201,4 +195,37 @@ int snull_change_mtu(struct net_device* dev, int new_mtu)
     spin_unlock_irqrestore(lock, flags);
 
     return 0;
+}
+
+static int snull_xdp_set(struct net_device* dev, struct netdev_bpf* bpf)
+{
+    if (dev->mtu > SNULL_RX_BUF_MAXSZ) {
+        pr_warn("MTU %u is too big. Must be less then or equal to %lu\n", dev->mtu, SNULL_RX_BUF_MAXSZ);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+int snull_xdp(struct net_device* dev, struct netdev_bpf* bpf)
+{
+    switch (bpf->command) {
+    case XDP_SETUP_PROG:
+        return snull_xdp_set(dev, bpf);
+    case XDP_SETUP_XSK_POOL:
+    default:
+        break;
+    }
+
+    return -EINVAL;
+}
+
+int snull_xdp_xmit(struct net_device* dev, int n, struct xdp_frame** xdp, u32 flags)
+{
+    return -EINVAL;
+}
+
+int snull_xsk_wakeup(struct net_device* dev, u32 queue_id, u32 flags)
+{
+    return -EINVAL;
 }

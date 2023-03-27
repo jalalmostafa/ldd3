@@ -1,4 +1,4 @@
-#define DEBUG
+#include "snull.h"
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -10,8 +10,6 @@
 #include <linux/etherdevice.h>
 #include <net/page_pool.h>
 #include <linux/skbuff.h>
-
-#include "snull.h"
 
 struct net_device* snull_devs[2];
 int timeout;
@@ -29,14 +27,14 @@ struct net_device_ops snull_ops = {
     .ndo_do_ioctl = snull_ioctl,
     .ndo_set_config = snull_config,
     // XDP NDOs
-    .ndo_bpf = NULL,
-    .ndo_xsk_wakeup = NULL,
-    .ndo_xdp_xmit = NULL,
+    .ndo_bpf = snull_xdp,
+    .ndo_xdp_xmit = snull_xdp_xmit,
+    // .ndo_xsk_wakeup = snull_xsk_wakeup,
 };
 
-void snull_setup_pool(struct net_device* dev)
+int snull_setup_pool(struct net_device* dev)
 {
-    int i;
+    int i, err;
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_tx* pkt;
     struct page_pool_params pp_params = {
@@ -56,7 +54,7 @@ void snull_setup_pool(struct net_device* dev)
         pkt = kmalloc(sizeof(struct snull_packet_tx), GFP_KERNEL);
         if (pkt == NULL) {
             pr_notice("Ran out of memory allocating packet pool\n");
-            return;
+            return -ENOMEM;
         }
 
         pkt->dev = dev;
@@ -68,13 +66,39 @@ void snull_setup_pool(struct net_device* dev)
     // initialize rx pool
     priv->rxq.ppool = page_pool_create(&pp_params);
     priv->rxq.head = NULL;
+    if (IS_ERR(priv->rxq.ppool)) {
+        err = PTR_ERR(priv->rxq.ppool);
+        goto error;
+    }
+
+    err = xdp_rxq_info_reg(&priv->rxq.xdp_rq, dev, 0, 0);
+    if (err) {
+        pr_err("xdp_rxq_info_reg failed\n");
+        goto xdp_reg_error;
+    }
+
+    err = xdp_rxq_info_reg_mem_model(&priv->rxq.xdp_rq, MEM_TYPE_PAGE_POOL,
+        priv->rxq.ppool);
+    if (err) {
+        pr_err("xdp_rxq_info_reg_mem_model failed");
+        goto xdp_mem_reg_err;
+    }
+
+    return 0;
+
+xdp_mem_reg_err:
+    xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
+xdp_reg_error:
+    page_pool_destroy(priv->rxq.ppool);
+error:
+    priv->rxq.ppool = NULL;
+    return err;
 }
 
 void snull_teardown_pool(struct net_device* dev)
 {
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_tx* pkttx;
-    struct snull_packet_rx* pktrx;
 
     while ((pkttx = priv->txq.ppool)) {
         priv->txq.ppool = pkttx->next;
@@ -88,6 +112,9 @@ void snull_teardown_pool(struct net_device* dev)
         priv->rxq.ppool = NULL;
     }
     priv->rxq.head = NULL;
+
+    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
+    xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
 }
 
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
@@ -98,14 +125,13 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->txq.ppool;
-    pr_debug("BEFORE ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
+
     if (!pkt) {
         pr_debug("Out of Pool\n");
         goto out;
     }
 
     priv->txq.ppool = pkt->next;
-
     if (priv->txq.ppool == NULL) {
         pr_debug("Pool empty\n");
         netif_stop_queue(dev);
@@ -114,7 +140,6 @@ struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
     pkt->next = priv->txq.head;
     priv->txq.head = pkt;
 
-    pr_debug("AFTER ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
 out:
     spin_unlock_irqrestore(&priv->lock, flags);
     return pkt;
@@ -126,13 +151,9 @@ void snull_release_tx(struct snull_packet_tx* pkt)
     struct snull_priv* priv = netdev_priv(pkt->dev);
 
     spin_lock_irqsave(&priv->lock, flags);
-    pr_debug("BEFORE ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
-
     priv->txq.head = pkt->next;
     pkt->next = priv->txq.ppool;
     priv->txq.ppool = pkt;
-    pr_debug("AFTER ppool: %p - head: %p - pkt: %p - pkt->next: %p\n", priv->txq.ppool, priv->txq.head, pkt, pkt->next);
-
     spin_unlock_irqrestore(&priv->lock, flags);
 
     if (netif_queue_stopped(pkt->dev) && pkt->next == NULL)
@@ -414,7 +435,6 @@ static void snull_exit(void)
 static int __init snull_init(void)
 {
     int i, result = -ENOMEM;
-
     snull_interrupt = use_napi ? snull_napi_interrupt : snull_regular_interrupt;
 
     snull_devs[0] = alloc_netdev(sizeof(struct snull_priv), "sn%d", NET_NAME_UNKNOWN, snull_dev_init);
