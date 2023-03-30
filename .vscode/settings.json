@@ -2,18 +2,7 @@
     "files.associations": {
         "*.props": "xml",
         "*.targets": "xml",
-        "kdev_t.h": "c",
-        "slab.h": "c",
-        "scull.h": "c",
-        "cdev.h": "c",
-        "mutex.h": "c",
-        "module.h": "c",
-        "init.h": "c",
-        "dma-direction.h": "c",
-        "bpf.h": "c",
-        "skbuff.h": "c",
-        "netdevice.h": "c",
-        "ip.h": "c",
-        "tcp.h": "c"
+        "*.h": "c",
+        "*.c": "c"
     }
 }

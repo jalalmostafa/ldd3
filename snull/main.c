@@ -10,6 +10,8 @@
 #include <linux/etherdevice.h>
 #include <net/page_pool.h>
 #include <linux/skbuff.h>
+#include <linux/filter.h>
+#include <linux/bpf_trace.h>
 
 struct net_device* snull_devs[2];
 int timeout;
@@ -160,7 +162,7 @@ void snull_release_tx(struct snull_packet_tx* pkt)
         netif_wake_queue(pkt->dev);
 }
 
-void snull_release_rx(struct snull_packet_rx* pkt)
+void snull_release_rx(struct snull_packet_rx* pkt, bool recycle)
 {
     struct snull_priv* priv = netdev_priv(pkt->dev);
 
@@ -169,7 +171,7 @@ void snull_release_rx(struct snull_packet_rx* pkt)
         return;
     }
 
-    page_pool_release_page(priv->rxq.ppool, pkt->page);
+    recycle ? page_pool_recycle_direct(priv->rxq.ppool, pkt->page) : page_pool_release_page(priv->rxq.ppool, pkt->page);
 }
 
 void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx)
@@ -178,9 +180,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     struct snull_priv* priv = netdev_priv(target);
     struct snull_packet_rx* pkt_rx;
     struct page* page;
-    u8* paddr;
-
-    pr_debug("run\n");
+    u8* hardstart;
 
     if (!priv->rxq.ppool) {
         pr_debug("Null Page Pool\n");
@@ -192,13 +192,20 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
         pr_debug("page_pool_dev_alloc_pages returns NULL\n");
         return;
     }
-    paddr = page_address(page);
-    memset(paddr, 0, PAGE_SIZE);
-    pkt_rx = (struct snull_packet_rx*)paddr;
-    pkt_rx->datalen = pkt_tx->datalen;
-    pkt_rx->dev = target;
-    pkt_rx->data = memcpy(paddr + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
+    hardstart = page_address(page);
+    memset(hardstart, 0, PAGE_SIZE);
+    pkt_rx = (struct snull_packet_rx*)hardstart;
     pkt_rx->page = page;
+    pkt_rx->dev = target;
+
+    if (READ_ONCE(priv->rxq.xdp_prog)) {
+        xdp_init_buff(&pkt_rx->xbuf, PAGE_SIZE, &priv->rxq.xdp_rq);
+        xdp_prepare_buff(&pkt_rx->xbuf, hardstart, SNULL_RX_HEADROOM, pkt_tx->datalen, false);
+        pkt_rx->xbuf.data = memcpy(hardstart + SNULL_RX_HEADROOM, pkt_tx->data, pkt_tx->datalen);
+    } else {
+        pkt_rx->skb.datalen = pkt_tx->datalen;
+        pkt_rx->skb.data = memcpy(hardstart + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->skb.datalen);
+    }
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt_rx->next = priv->rxq.head;
@@ -211,7 +218,6 @@ struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
     unsigned long flags;
-    pr_debug("run\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->rxq.head;
@@ -227,12 +233,12 @@ void snull_rx_bottom_ints(struct net_device* dev, int enable)
     priv->rx_int_enabled = enable;
 }
 
-void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
+void snull_rx_skb(struct net_device* dev, struct snull_packet_rx* pkt)
 {
     struct sk_buff* skb;
     struct snull_priv* priv = netdev_priv(dev);
 
-    skb = dev_alloc_skb(pkt->datalen + 2);
+    skb = dev_alloc_skb(pkt->skb.datalen + 2);
     if (!skb) {
         if (printk_ratelimit()) {
             pr_notice("rx low on mem - packet dropped\n");
@@ -243,13 +249,13 @@ void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
     }
 
     skb_reserve(skb, 2);
-    memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
+    memcpy(skb_put(skb, pkt->skb.datalen), pkt->skb.data, pkt->skb.datalen);
     skb->dev = dev;
     skb->protocol = eth_type_trans(skb, dev);
     skb->ip_summed = CHECKSUM_UNNECESSARY;
 
     priv->stats.rx_packets++;
-    priv->stats.rx_bytes += pkt->datalen;
+    priv->stats.rx_bytes += pkt->skb.datalen;
     netif_rx(skb);
 }
 
@@ -276,9 +282,9 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
         if (pkt) {
             spin_lock(&priv->lock);
             priv->rxq.head = pkt->next;
-            snull_rx(dev, pkt);
+            snull_rx_skb(dev, pkt);
             spin_unlock(&priv->lock);
-            snull_release_rx(pkt);
+            snull_release_rx(pkt, false);
         }
     }
 
@@ -294,14 +300,101 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     }
 }
 
+static void snull_post_skb(struct sk_buff* skb, struct net_device* dev, struct snull_priv* priv)
+{
+    skb->ip_summed = CHECKSUM_UNNECESSARY;
+    skb->protocol = eth_type_trans(skb, dev);
+
+    netif_receive_skb(skb);
+
+    priv->stats.rx_packets++;
+    priv->stats.rx_bytes += skb->len;
+}
+
+static int snull_rcv_skb(struct snull_packet_rx* pkt, struct net_device* dev)
+{
+    struct sk_buff* skb;
+    struct snull_priv* priv = netdev_priv(dev);
+
+    skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->skb.datalen);
+    if (!skb) {
+        if (printk_ratelimit())
+            pr_notice("packet dropped\n");
+        priv->stats.rx_dropped++;
+        return -ENOMEM;
+    }
+
+    memcpy(skb_put(skb, pkt->skb.datalen), pkt->skb.data, pkt->skb.datalen);
+    snull_post_skb(skb, dev, priv);
+    snull_release_rx(pkt, false);
+
+    return 0;
+}
+
+static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev)
+{
+    struct xdp_frame* xframe;
+    struct sk_buff* skb;
+    struct snull_priv* priv;
+
+    xframe = xdp_convert_buff_to_frame(xbuf);
+    skb = xdp_build_skb_from_frame(xframe, dev);
+    if (!skb) {
+        return -ENOMEM;
+    }
+
+    snull_post_skb(skb, dev, priv);
+    return 0;
+}
+
+static int snull_xdp_tx(struct xdp_buff* xbuf, struct net_device* dev)
+{
+    struct xdp_frame* xframe = xdp_convert_buff_to_frame(xbuf);
+    return snull_xdp_xmit(dev, 1, &xframe, 0);
+}
+
+static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
+    struct net_device* dev)
+{
+    int err = 0;
+    u32 verdict = bpf_prog_run_xdp(xdp_prog, &pkt->xbuf);
+
+    switch (verdict) {
+    case XDP_ABORTED:
+        err = -1;
+        break;
+    case XDP_DROP:
+        break;
+    case XDP_PASS:
+        err = snull_xdp_pass(&pkt->xbuf, dev);
+        break;
+    case XDP_TX:
+        err = snull_xdp_tx(&pkt->xbuf, dev);
+        break;
+    case XDP_REDIRECT:
+        err = xdp_do_redirect(dev, &pkt->xbuf, xdp_prog);
+        break;
+    default:
+        bpf_warn_invalid_xdp_action(verdict);
+        break;
+    }
+
+    snull_release_rx(pkt, true);
+    if (err < 0) {
+        trace_xdp_exception(dev, xdp_prog, verdict);
+    }
+
+    return err;
+}
+
 static int snull_poll(struct napi_struct* napi, int budget)
 {
     int npackets = 0;
     unsigned long flags;
-    struct sk_buff* skb;
     struct net_device* dev = napi->dev;
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
+    struct bpf_prog* xdp_prog = READ_ONCE(priv->rxq.xdp_prog);
 
     while (npackets < budget && priv->rxq.head) {
         pkt = snull_dequeue_buf(dev);
@@ -310,27 +403,12 @@ static int snull_poll(struct napi_struct* napi, int budget)
             break;
         }
 
-        skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->datalen);
-        if (!skb) {
-            if (printk_ratelimit())
-                pr_notice("packet dropped\n");
-            priv->stats.rx_dropped++;
-            goto next;
-        }
+        if (xdp_prog)
+            snull_rcv_xdp(xdp_prog, pkt, dev);
+        else
+            snull_rcv_skb(pkt, dev);
 
-        memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
-        skb->ip_summed = CHECKSUM_UNNECESSARY;
-        skb->protocol = eth_type_trans(skb, dev);
-
-        netif_receive_skb(skb);
-
-        priv->stats.rx_packets++;
-        priv->stats.rx_bytes += pkt->datalen;
-
-    next:
-        pr_debug("next\n");
         npackets++;
-        snull_release_rx(pkt);
     }
 
     /* If we processed all packets, we're done; tell the kernel and reenable ints */
