@@ -109,14 +109,14 @@ void snull_teardown_pool(struct net_device* dev)
     }
     priv->txq.head = NULL;
 
+    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
+    xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
+
     if (priv->rxq.ppool) {
         page_pool_destroy(priv->rxq.ppool);
         priv->rxq.ppool = NULL;
     }
     priv->rxq.head = NULL;
-
-    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
-    xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
 }
 
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
@@ -263,7 +263,6 @@ static int snull_rcv_skb(struct snull_packet_rx* pkt, bool napi)
     if (IS_ERR(skb))
         return PTR_ERR(skb);
 
-    
     return napi ? netif_receive_skb(skb) : netif_rx(skb);
 }
 
