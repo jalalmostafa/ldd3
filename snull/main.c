@@ -356,7 +356,7 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
                 snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
                 snull_release_rx(pkt, true);
             } else {
-                snull_rx_skb(pkt);
+                snull_rcv_skb(pkt, false);
                 snull_release_rx(pkt, false);
             }
             spin_unlock(&priv->lock);
@@ -396,7 +396,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
             snull_rcv_xdp(xdp_prog, pkt, dev, true);
             snull_release_rx(pkt, true);
         } else {
-            snull_napi_rcv_skb(pkt);
+            snull_rcv_skb(pkt, true);
             snull_release_rx(pkt, false);
         }
 
