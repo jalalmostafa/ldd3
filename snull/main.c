@@ -259,44 +259,44 @@ void snull_rx_skb(struct net_device* dev, struct snull_packet_rx* pkt)
     netif_rx(skb);
 }
 
-static void snull_post_skb(struct sk_buff* skb, struct net_device* dev, struct snull_priv* priv)
-{
-    int err;
-    skb->ip_summed = CHECKSUM_UNNECESSARY;
-    skb->protocol = eth_type_trans(skb, dev);
-
-    err = netif_receive_skb(skb);
-    if (err) {
-        pr_debug("netif_receive_skb %u\n", err);
-    }
-
-    priv->stats.rx_packets++;
-    priv->stats.rx_bytes += skb->len;
-}
-
-static int snull_rcv_skb(struct snull_packet_rx* pkt, struct net_device* dev)
+static struct sk_buff* snull_build_skb(struct snull_packet_rx* pkt)
 {
     struct sk_buff* skb;
-    struct snull_priv* priv = netdev_priv(dev);
+    struct snull_priv* priv = netdev_priv(pkt->dev);
 
     skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->skb.datalen);
     if (!skb) {
         if (printk_ratelimit())
             pr_notice("packet dropped\n");
         priv->stats.rx_dropped++;
-        return -ENOMEM;
+        return ERR_PTR(-ENOMEM);
     }
 
     memcpy(skb_put(skb, pkt->skb.datalen), pkt->skb.data, pkt->skb.datalen);
-    snull_post_skb(skb, dev, priv);
+    skb->ip_summed = CHECKSUM_UNNECESSARY;
+    skb->protocol = eth_type_trans(skb, pkt->dev);
+
+    priv->stats.rx_packets++;
+    priv->stats.rx_bytes += skb->len;
+
+    return skb;
+}
+
+static int snull_napi_rcv_skb(struct snull_packet_rx* pkt)
+{
+    struct sk_buff* skb;
+    skb = snull_build_skb(pkt);
+    if (IS_ERR(skb))
+        return PTR_ERR(skb);
+
+    netif_receive_skb(skb);
     return 0;
 }
 
-static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev)
+static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev, bool napi)
 {
     struct xdp_frame* xframe;
     struct sk_buff* skb;
-    struct snull_priv* priv;
 
     xframe = xdp_convert_buff_to_frame(xbuf);
     pr_debug("xframe %p\n", xframe);
@@ -305,8 +305,7 @@ static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev)
         return -ENOMEM;
     }
 
-    snull_post_skb(skb, dev, priv);
-    return 0;
+    return napi ? netif_receive_skb(skb) : netif_rx(skb);
 }
 
 static int snull_xdp_tx(struct xdp_buff* xbuf, struct net_device* dev)
@@ -316,7 +315,7 @@ static int snull_xdp_tx(struct xdp_buff* xbuf, struct net_device* dev)
 }
 
 static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
-    struct net_device* dev)
+    struct net_device* dev, bool napi)
 {
     int err = 0;
     u32 verdict;
@@ -333,7 +332,7 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
         break;
     case XDP_PASS:
         pr_debug("XDP Passing\n");
-        err = snull_xdp_pass(&pkt->xbuf, dev);
+        err = snull_xdp_pass(&pkt->xbuf, dev, napi);
         break;
     case XDP_TX:
         pr_debug("XDP TXing\n");
@@ -380,10 +379,10 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
             spin_lock(&priv->lock);
             priv->rxq.head = pkt->next;
             if (priv->rxq.xdp_prog) {
-                snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev);
+                snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
                 snull_release_rx(pkt, true);
             } else {
-                snull_rcv_skb(pkt, dev);
+                snull_napi_rcv_skb(pkt);
                 snull_release_rx(pkt, false);
             }
             spin_unlock(&priv->lock);
@@ -406,9 +405,9 @@ static int snull_poll(struct napi_struct* napi, int budget)
 {
     int npackets = 0;
     unsigned long flags;
+    struct snull_packet_rx* pkt;
     struct net_device* dev = napi->dev;
     struct snull_priv* priv = netdev_priv(dev);
-    struct snull_packet_rx* pkt;
     struct bpf_prog* xdp_prog = READ_ONCE(priv->rxq.xdp_prog);
 
     while (npackets < budget && priv->rxq.head) {
@@ -420,10 +419,10 @@ static int snull_poll(struct napi_struct* napi, int budget)
 
         pr_debug("npackets: %d\n", npackets);
         if (xdp_prog) {
-            snull_rcv_xdp(xdp_prog, pkt, dev);
+            snull_rcv_xdp(xdp_prog, pkt, dev, true);
             snull_release_rx(pkt, true);
         } else {
-            snull_rcv_skb(pkt, dev);
+            snull_napi_rcv_skb(pkt);
             snull_release_rx(pkt, false);
         }
 
