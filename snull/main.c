@@ -16,7 +16,7 @@
 struct net_device* snull_devs[2];
 int timeout;
 int lockup = 0;
-bool use_napi = true;
+bool use_napi = false;
 snull_interrupt_t snull_interrupt;
 int pool_size = 8;
 
@@ -264,8 +264,8 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     int statusword;
     struct snull_priv* priv;
     struct snull_packet_rx* pkt = NULL;
-
     struct net_device* dev = (struct net_device*)dev_id;
+
     if (!dev)
         return;
 
@@ -282,9 +282,14 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
         if (pkt) {
             spin_lock(&priv->lock);
             priv->rxq.head = pkt->next;
-            snull_rx_skb(dev, pkt);
+            if (priv->rxq.xdp_prog) {
+                snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev);
+                snull_release_rx(pkt, true);
+            } else {
+                snull_rcv_skb(pkt, dev);
+                snull_release_rx(pkt, false);
+            }
             spin_unlock(&priv->lock);
-            snull_release_rx(pkt, false);
         }
     }
 
@@ -330,8 +335,6 @@ static int snull_rcv_skb(struct snull_packet_rx* pkt, struct net_device* dev)
 
     memcpy(skb_put(skb, pkt->skb.datalen), pkt->skb.data, pkt->skb.datalen);
     snull_post_skb(skb, dev, priv);
-    snull_release_rx(pkt, false);
-
     return 0;
 }
 
@@ -392,7 +395,6 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
         break;
     }
 
-    snull_release_rx(pkt, true);
     if (err < 0) {
         trace_xdp_exception(dev, xdp_prog, verdict);
     }
@@ -416,10 +418,14 @@ static int snull_poll(struct napi_struct* napi, int budget)
             break;
         }
 
-        if (xdp_prog)
+        pr_debug("npackets: %d\n", npackets);
+        if (xdp_prog) {
             snull_rcv_xdp(xdp_prog, pkt, dev);
-        else
+            snull_release_rx(pkt, true);
+        } else {
             snull_rcv_skb(pkt, dev);
+            snull_release_rx(pkt, false);
+        }
 
         npackets++;
     }
