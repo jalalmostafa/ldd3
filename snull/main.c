@@ -259,52 +259,6 @@ void snull_rx_skb(struct net_device* dev, struct snull_packet_rx* pkt)
     netif_rx(skb);
 }
 
-static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
-{
-    int statusword;
-    struct snull_priv* priv;
-    struct snull_packet_rx* pkt = NULL;
-    struct net_device* dev = (struct net_device*)dev_id;
-
-    if (!dev)
-        return;
-
-    priv = netdev_priv(dev);
-
-    spin_lock(&priv->lock);
-    statusword = priv->status;
-    priv->status = 0;
-    spin_unlock(&priv->lock);
-
-    if (statusword & SNULL_RX_INTR) {
-        /* send it to snull_rx for handling */
-        pkt = priv->rxq.head;
-        if (pkt) {
-            spin_lock(&priv->lock);
-            priv->rxq.head = pkt->next;
-            if (priv->rxq.xdp_prog) {
-                snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev);
-                snull_release_rx(pkt, true);
-            } else {
-                snull_rcv_skb(pkt, dev);
-                snull_release_rx(pkt, false);
-            }
-            spin_unlock(&priv->lock);
-        }
-    }
-
-    if (statusword & SNULL_TX_INTR) {
-        /* a transmission is over: free the skb */
-        spin_lock(&priv->lock);
-        priv->stats.tx_packets++;
-        priv->stats.tx_bytes += priv->txq.head->datalen;
-        dev_kfree_skb(priv->txq.head->skb);
-        spin_unlock(&priv->lock);
-
-        snull_release_tx(priv->txq.head);
-    }
-}
-
 static void snull_post_skb(struct sk_buff* skb, struct net_device* dev, struct snull_priv* priv)
 {
     int err;
@@ -400,6 +354,52 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
     }
 
     return err;
+}
+
+static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
+{
+    int statusword;
+    struct snull_priv* priv;
+    struct snull_packet_rx* pkt = NULL;
+    struct net_device* dev = (struct net_device*)dev_id;
+
+    if (!dev)
+        return;
+
+    priv = netdev_priv(dev);
+
+    spin_lock(&priv->lock);
+    statusword = priv->status;
+    priv->status = 0;
+    spin_unlock(&priv->lock);
+
+    if (statusword & SNULL_RX_INTR) {
+        /* send it to snull_rx for handling */
+        pkt = priv->rxq.head;
+        if (pkt) {
+            spin_lock(&priv->lock);
+            priv->rxq.head = pkt->next;
+            if (priv->rxq.xdp_prog) {
+                snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev);
+                snull_release_rx(pkt, true);
+            } else {
+                snull_rcv_skb(pkt, dev);
+                snull_release_rx(pkt, false);
+            }
+            spin_unlock(&priv->lock);
+        }
+    }
+
+    if (statusword & SNULL_TX_INTR) {
+        /* a transmission is over: free the skb */
+        spin_lock(&priv->lock);
+        priv->stats.tx_packets++;
+        priv->stats.tx_bytes += priv->txq.head->datalen;
+        dev_kfree_skb(priv->txq.head->skb);
+        spin_unlock(&priv->lock);
+
+        snull_release_tx(priv->txq.head);
+    }
 }
 
 static int snull_poll(struct napi_struct* napi, int budget)
