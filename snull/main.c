@@ -233,32 +233,6 @@ void snull_rx_bottom_ints(struct net_device* dev, int enable)
     priv->rx_int_enabled = enable;
 }
 
-void snull_rx_skb(struct net_device* dev, struct snull_packet_rx* pkt)
-{
-    struct sk_buff* skb;
-    struct snull_priv* priv = netdev_priv(dev);
-
-    skb = dev_alloc_skb(pkt->skb.datalen + 2);
-    if (!skb) {
-        if (printk_ratelimit()) {
-            pr_notice("rx low on mem - packet dropped\n");
-        }
-
-        priv->stats.rx_dropped++;
-        return;
-    }
-
-    skb_reserve(skb, 2);
-    memcpy(skb_put(skb, pkt->skb.datalen), pkt->skb.data, pkt->skb.datalen);
-    skb->dev = dev;
-    skb->protocol = eth_type_trans(skb, dev);
-    skb->ip_summed = CHECKSUM_UNNECESSARY;
-
-    priv->stats.rx_packets++;
-    priv->stats.rx_bytes += pkt->skb.datalen;
-    netif_rx(skb);
-}
-
 static struct sk_buff* snull_build_skb(struct snull_packet_rx* pkt)
 {
     struct sk_buff* skb;
@@ -267,7 +241,7 @@ static struct sk_buff* snull_build_skb(struct snull_packet_rx* pkt)
     skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->skb.datalen);
     if (!skb) {
         if (printk_ratelimit())
-            pr_notice("packet dropped\n");
+            pr_notice("low mem - packet dropped\n");
         priv->stats.rx_dropped++;
         return ERR_PTR(-ENOMEM);
     }
@@ -282,15 +256,15 @@ static struct sk_buff* snull_build_skb(struct snull_packet_rx* pkt)
     return skb;
 }
 
-static int snull_napi_rcv_skb(struct snull_packet_rx* pkt)
+static int snull_rcv_skb(struct snull_packet_rx* pkt, bool napi)
 {
     struct sk_buff* skb;
     skb = snull_build_skb(pkt);
     if (IS_ERR(skb))
         return PTR_ERR(skb);
 
-    netif_receive_skb(skb);
-    return 0;
+    
+    return napi ? netif_receive_skb(skb) : netif_rx(skb);
 }
 
 static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev, bool napi)
@@ -382,7 +356,7 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
                 snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
                 snull_release_rx(pkt, true);
             } else {
-                snull_napi_rcv_skb(pkt);
+                snull_rx_skb(pkt);
                 snull_release_rx(pkt, false);
             }
             spin_unlock(&priv->lock);
