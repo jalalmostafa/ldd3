@@ -3,10 +3,10 @@
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
-int  xdp_prog_simple(struct xdp_md *ctx)
+int xdp_prog_simple(struct xdp_md* ctx)
 {
-    bpf_printk("bpf_printk: %x\n", ctx->data);
-	return XDP_PASS;
+    bpf_trace_printk("bpf_printk: %x\n", ctx->data);
+    return XDP_PASS;
 }
 
 char _license[] SEC("license") = "GPL";
