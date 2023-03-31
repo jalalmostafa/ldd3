@@ -1,6 +1,5 @@
 LLC ?= llc
 CLANG ?= clang
-CC ?= gcc
 
 XDP_TARGETS := xdp-pass
 XDP_C = ${XDP_TARGETS:=.c}
@@ -23,7 +22,7 @@ llvm-check: $(CLANG) $(LLC)
 		else true; fi; \
 	done
 
-$(XDP_OBJ): %.o: %.c  Makefile $(EXTRA_DEPS)
+$(XDP_OBJ): %.o: %.c
 	$(CLANG) -S \
 	    -target bpf \
 	    -D __BPF_TRACING__ \

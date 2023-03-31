@@ -302,10 +302,14 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 
 static void snull_post_skb(struct sk_buff* skb, struct net_device* dev, struct snull_priv* priv)
 {
+    int err;
     skb->ip_summed = CHECKSUM_UNNECESSARY;
     skb->protocol = eth_type_trans(skb, dev);
 
-    netif_receive_skb(skb);
+    err = netif_receive_skb(skb);
+    if (err) {
+        pr_debug("netif_receive_skb %u\n", err);
+    }
 
     priv->stats.rx_packets++;
     priv->stats.rx_bytes += skb->len;
@@ -338,6 +342,7 @@ static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev)
     struct snull_priv* priv;
 
     xframe = xdp_convert_buff_to_frame(xbuf);
+    pr_debug("xframe %p\n", xframe);
     skb = xdp_build_skb_from_frame(xframe, dev);
     if (!skb) {
         return -ENOMEM;
@@ -357,24 +362,32 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
     struct net_device* dev)
 {
     int err = 0;
-    u32 verdict = bpf_prog_run_xdp(xdp_prog, &pkt->xbuf);
+    u32 verdict;
+    pr_debug("snull_rcv_xdp\n");
 
+    verdict = bpf_prog_run_xdp(xdp_prog, &pkt->xbuf);
     switch (verdict) {
     case XDP_ABORTED:
+        pr_debug("XDP Aborting\n");
         err = -1;
         break;
     case XDP_DROP:
+        pr_debug("XDP Dropping\n");
         break;
     case XDP_PASS:
+        pr_debug("XDP Passing\n");
         err = snull_xdp_pass(&pkt->xbuf, dev);
         break;
     case XDP_TX:
+        pr_debug("XDP TXing\n");
         err = snull_xdp_tx(&pkt->xbuf, dev);
         break;
     case XDP_REDIRECT:
+        pr_debug("XDP Redirecting\n");
         err = xdp_do_redirect(dev, &pkt->xbuf, xdp_prog);
         break;
     default:
+        pr_debug("XDP Unknown: %u\n", verdict);
         bpf_warn_invalid_xdp_action(verdict);
         break;
     }
