@@ -5,7 +5,7 @@
 SEC("xdp")
 int xdp_prog_simple(struct xdp_md* ctx)
 {
-    bpf_trace_printk("bpf_printk: %x\n", ctx->data);
+    bpf_trace_printk("bpf_printk: %d\n", ctx->rx_queue_index);
     return XDP_PASS;
 }
 
