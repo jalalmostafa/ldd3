@@ -338,6 +338,7 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     struct snull_priv* priv;
     struct snull_packet_rx* pkt = NULL;
     struct net_device* dev = (struct net_device*)dev_id;
+    pr_debug("run\n");
 
     if (!dev)
         return;
@@ -429,7 +430,6 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     priv = netdev_priv(dev);
 
     spin_lock(&priv->lock);
-
     statusword = priv->status;
     priv->status = 0;
     spin_unlock(&priv->lock);

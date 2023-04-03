@@ -107,6 +107,7 @@ static int snull_hw_tx(char* buf, int len, struct net_device* dev, enum snull_pa
         priv->status |= SNULL_RX_INTR;
         pr_debug("before remote interrupt\n");
         snull_interrupt(0, dest, NULL);
+        pr_debug("after remote interrupt\n");
     }
 
     priv = netdev_priv(dev);
