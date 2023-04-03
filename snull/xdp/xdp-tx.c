@@ -110,8 +110,9 @@ __sum16 inet_fast_csum(const void* addr, unsigned int count)
         sum += *(unsigned char*)addr;
 
     /*  Fold 32-bit sum to 16 bits */
-    while (sum >> 16)
-        sum = (sum & 0xffff) + (sum >> 16);
+    // while (sum >> 16)
+    sum = (sum & 0xffff) + (sum >> 16);
+    sum = (sum & 0xffff) + (sum >> 16);
 
     return ~sum;
 }
