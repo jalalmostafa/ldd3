@@ -140,7 +140,7 @@ int xdp_tx(struct xdp_md* ctx)
     __u32 ipaddr;
     void* data = (void*)(long)ctx->data;
     void* data_end = (void*)(long)ctx->data_end;
-    int datalen, len = data_end - data;
+    // int datalen, len = data_end - data;
     bpf_printk("XDP TX\n");
 
     if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) > data_end) {
@@ -174,7 +174,7 @@ int xdp_tx(struct xdp_md* ctx)
 
     bpf_printk("constructing ping\n");
 
-    datalen = len - sizeof(struct ethhdr) - sizeof(struct iphdr) - sizeof(struct icmphdr);
+    // datalen = len - sizeof(struct ethhdr) - sizeof(struct iphdr) - sizeof(struct icmphdr);
 
     // swap macs
     memcpy(mac, eth->h_dest, sizeof(mac));
