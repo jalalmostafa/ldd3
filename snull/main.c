@@ -227,7 +227,7 @@ struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev)
     return pkt;
 }
 
-void snull_rx_bottom_ints(struct net_device* dev, int enable)
+void snull_rx_top_ints(struct net_device* dev, int enable)
 {
     struct snull_priv* priv = netdev_priv(dev);
     priv->rx_int_enabled = enable;
@@ -295,7 +295,10 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
     int err = 0;
     u32 verdict;
 
+    pr_debug("wants to run xdp\n");
     verdict = bpf_prog_run_xdp(xdp_prog, &pkt->xbuf);
+    pr_debug("switch verdict\n");
+
     switch (verdict) {
     case XDP_ABORTED:
         pr_debug("XDP Aborting\n");
@@ -407,7 +410,7 @@ static int snull_poll(struct napi_struct* napi, int budget)
     if (npackets < budget) {
         spin_lock_irqsave(&priv->lock, flags);
         if (napi_complete_done(napi, npackets))
-            snull_rx_bottom_ints(dev, 1);
+            snull_rx_top_ints(dev, 1);
         spin_unlock_irqrestore(&priv->lock, flags);
     }
 
@@ -432,8 +435,8 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     spin_unlock(&priv->lock);
 
     if (statusword & SNULL_RX_INTR && napi_schedule_prep(&priv->napi)) {
-        // disable bottom interrupts because when there is at least one packet available then no need to fire this again just tell NAPI, at least there is one packet available for fetching.
-        snull_rx_bottom_ints(dev, 0);
+        // disable top interrupts because when there is at least one packet available then no need to fire this again just tell NAPI, at least there is one packet available for fetching.
+        snull_rx_top_ints(dev, 0);
         // snull_rx call is deffered/scheduled to snull_poll, that is managed by NAPI budget
         __napi_schedule(&priv->napi);
     }
@@ -483,7 +486,7 @@ static void snull_dev_init(struct net_device* dev)
         netif_napi_add(dev, &priv->napi, snull_poll, SNULL_NAPI_WEIGHT);
     }
     spin_lock_init(&priv->lock);
-    snull_rx_bottom_ints(dev, 1);
+    snull_rx_top_ints(dev, 1);
     snull_setup_pool(dev);
 }
 
