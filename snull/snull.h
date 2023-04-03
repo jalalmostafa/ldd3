@@ -92,7 +92,7 @@ void snull_teardown_pool(struct net_device* dev);
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev);
 void snull_release_tx(struct snull_packet_tx* pkt);
 void snull_release_rx(struct snull_packet_rx* pkt, bool recycle);
-
+int snull_xdp_xmit_one(struct xdp_frame* xframe, struct net_device* dev);
 void snull_enqueue_buf(struct net_device* dev, struct snull_packet_tx* pkt);
 struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev);
 

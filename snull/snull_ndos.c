@@ -243,7 +243,7 @@ int snull_xdp(struct net_device* dev, struct netdev_bpf* bpf)
     return -EINVAL;
 }
 
-static int snull_xdp_xmit_one(struct xdp_frame* xframe, struct net_device* dev)
+int snull_xdp_xmit_one(struct xdp_frame* xframe, struct net_device* dev)
 {
     pr_debug("run\n");
     return snull_hw_tx_xdp(xframe, dev);
@@ -263,7 +263,6 @@ int snull_xdp_xmit(struct net_device* dev, int n, struct xdp_frame** xdp, u32 fl
 
     for (i = 0; i < n; i++) {
         xframe = xdp[i];
-        pr_debug("xframe %p\n", xframe);
         if (!xframe)
             continue;
 
