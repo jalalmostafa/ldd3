@@ -283,7 +283,9 @@ static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev, bool na
 
 static int snull_xdp_tx(struct xdp_buff* xbuf, struct net_device* dev)
 {
-    struct xdp_frame* xframe = xdp_convert_buff_to_frame(xbuf);
+    struct xdp_frame* xframe;
+    pr_debug("transmitting xdp_frame\n");
+    xframe = xdp_convert_buff_to_frame(xbuf);
     return snull_xdp_xmit(dev, 1, &xframe, 0);
 }
 
@@ -292,7 +294,6 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
 {
     int err = 0;
     u32 verdict;
-    pr_debug("snull_rcv_xdp\n");
 
     verdict = bpf_prog_run_xdp(xdp_prog, &pkt->xbuf);
     switch (verdict) {
