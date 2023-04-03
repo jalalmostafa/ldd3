@@ -173,10 +173,10 @@ int xdp_tx(struct xdp_md* ctx)
         return XDP_DROP;
     }
 
-    if (iph->protocol != 1) {
-        bpf_printk("NOT ICMP Packet - protocol: %d.\n", iph->protocol);
-        return XDP_PASS;
-    }
+    // if (iph->protocol != 1) {
+    //     bpf_printk("NOT ICMP Packet - protocol: %d.\n", iph->protocol);
+    //     return XDP_PASS;
+    // }
 
     if (OVER(icmph, data_end)) {
         bpf_printk("Invalid packet.\n");
