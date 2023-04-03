@@ -1,7 +1,7 @@
 LLC ?= llc
 CLANG ?= clang
 
-XDP_TARGETS := xdp-pass
+XDP_TARGETS := xdp-pass xdp-drop xdp-aborted
 XDP_C = ${XDP_TARGETS:=.c}
 XDP_OBJ = ${XDP_C:.c=.o}
 

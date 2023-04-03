@@ -3,9 +3,9 @@
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
-int xdp_prog_simple(struct xdp_md* ctx)
+int xdp_pass(struct xdp_md* ctx)
 {
-    bpf_printk("hello world\n");
+    bpf_printk("XDP PASS\n");
     return XDP_PASS;
 }
 
