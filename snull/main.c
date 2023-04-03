@@ -286,7 +286,7 @@ static int snull_xdp_tx(struct xdp_buff* xbuf, struct net_device* dev)
     struct xdp_frame* xframe;
     pr_debug("[dev: %p] transmitting xdp_frame\n", dev);
     xframe = xdp_convert_buff_to_frame(xbuf);
-    return snull_xdp_xmit_one(dev, xframe);
+    return snull_xdp_xmit_one(xframe, dev);
 }
 
 static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
