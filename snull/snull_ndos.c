@@ -96,18 +96,23 @@ static int snull_hw_tx(char* buf, int len, struct net_device* dev, enum snull_pa
     default:
         break;
     }
+
     tx_buffer->datalen = len;
     tx_buffer->data = buf;
 
+    pr_debug("Before enqueue\n");
     // enqueue in destination interface
     snull_enqueue_buf(dest, tx_buffer);
     if (priv->rx_int_enabled) {
         priv->status |= SNULL_RX_INTR;
+        pr_debug("before remote interrupt\n");
         snull_interrupt(0, dest, NULL);
     }
 
     priv = netdev_priv(dev);
     priv->status |= SNULL_TX_INTR;
+
+    pr_debug("Before local interrupt\n");
 
     if (lockup && ((priv->stats.tx_packets + 1) % lockup) == 0) {
         /* Simulate a dropped transmit interrupt */
@@ -238,6 +243,7 @@ int snull_xdp(struct net_device* dev, struct netdev_bpf* bpf)
 
 static int snull_xdp_xmit_one(struct xdp_frame* xframe, struct net_device* dev)
 {
+    pr_debug("run\n");
     return snull_hw_tx_xdp(xframe, dev);
 }
 
@@ -255,6 +261,7 @@ int snull_xdp_xmit(struct net_device* dev, int n, struct xdp_frame** xdp, u32 fl
 
     for (i = 0; i < n; i++) {
         xframe = xdp[i];
+        pr_debug("xframe %p\n", xframe);
         if (!xframe)
             continue;
 

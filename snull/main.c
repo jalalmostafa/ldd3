@@ -357,11 +357,11 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
             priv->rxq.head = pkt->next;
             if (priv->rxq.xdp_prog) {
                 snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
-                snull_release_rx(pkt, true);
             } else {
                 snull_rcv_skb(pkt, false);
-                snull_release_rx(pkt, false);
             }
+            snull_release_rx(pkt, !!priv->rxq.xdp_prog);
+
             spin_unlock(&priv->lock);
         }
     }
