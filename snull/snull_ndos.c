@@ -122,6 +122,7 @@ static int snull_hw_tx(char* buf, int len, struct net_device* dev, enum snull_pa
     } else
         snull_interrupt(0, dev, NULL);
 
+    pr_debug("After local interrupt\n");
     return 0;
 }
 
