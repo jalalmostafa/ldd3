@@ -186,14 +186,14 @@ int xdp_tx(struct xdp_md* ctx)
     icmph->type = ICMP_ECHOREPLY;
     icmph->code = 0;
     icmph->checksum = 0;
-    icmph->checksum = inet_fast_csum(icmph, 2 + datalen);
+    // icmph->checksum = inet_fast_csum(icmph, 2 + datalen);
 
     // swap ips
     ipaddr = iph->daddr;
     iph->daddr = iph->saddr;
     iph->saddr = ipaddr;
     iph->check = 0;
-    iph->check = inet_fast_csum(iph, iph->ihl * 4);
+    // iph->check = inet_fast_csum(iph, iph->ihl * 4);
     // csum_replace2(&iph->check, htons(old_ttl << 8), htons(iph->ttl << 8));
 
     return XDP_TX;
