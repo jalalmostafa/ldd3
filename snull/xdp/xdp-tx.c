@@ -163,8 +163,7 @@ int xdp_tx(struct xdp_md* ctx)
     iph = (data + sizeof(struct ethhdr));
     icmph = (data + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
-    bpf_printk("eth->h_proto %d\n", eth->h_proto);
-    if (eth->h_proto != 0x0800) {
+    if (eth->h_proto != 0x0008) {
         bpf_printk("NOT ICMP Packet.\n");
         return XDP_PASS;
     }
