@@ -109,8 +109,8 @@ void snull_teardown_pool(struct net_device* dev)
     }
     priv->txq.head = NULL;
 
-    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
     xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
+    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
 
     if (priv->rxq.ppool) {
         page_pool_destroy(priv->rxq.ppool);
