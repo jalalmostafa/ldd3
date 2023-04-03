@@ -4,6 +4,7 @@
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/icmp.h>
+#include <arpa/inet.h>
 
 #define OVER(x, d) (x + 1 > (typeof(x))d)
 // static __u8 pong_reply[FRAME_SIZE];
@@ -112,33 +113,8 @@ void csum_replace2(__u16* sum, __u16 old, __u16 new)
     *sum = ~csum;
 }
 
-__u8* construct_pong(struct ethhdr* frame, __u32 len)
+__u8* construct_pong(struct ethhdr* frame, struct iphdr* packet, struct icmphdr* pong, __u32 len)
 {
-    char mac[6];
-    __u32 ipaddr;
-    struct iphdr* packet = (struct iphdr*)(frame + 1);
-    int datalen = len - sizeof(struct ethhdr) - sizeof(struct iphdr) - sizeof(struct icmphdr);
-
-    struct icmphdr* pong = (struct icmphdr*)(frame + sizeof(struct ethhdr) + sizeof(struct iphdr));
-    // swap macs
-    memcpy(mac, frame->h_dest, sizeof(mac));
-    memcpy(frame->h_dest, frame->h_source, sizeof(mac));
-    memcpy(frame->h_source, mac, sizeof(mac));
-
-    // build echo reply
-
-    pong->type = ICMP_ECHOREPLY;
-    pong->code = 0;
-    pong->checksum = 0;
-    pong->checksum = inet_fast_csum(packet, 2 + datalen);
-
-    // swap ips
-    ipaddr = packet->daddr;
-    packet->daddr = packet->saddr;
-    packet->saddr = ipaddr;
-    packet->check = 0;
-    pong->checksum = 0;
-    pong->checksum = inet_fast_csum(packet, packet->ihl * 4);
 
     return (__u8*)frame;
 }
@@ -149,9 +125,11 @@ int xdp_tx(struct xdp_md* ctx)
     struct ethhdr* eth;
     struct iphdr* iph;
     struct icmphdr* icmph;
-
+    char mac[6];
+    __u32 ipaddr;
     void* data = (void*)(long)ctx->data;
     void* data_end = (void*)(long)ctx->data_end;
+    int datalen, len = data_end - data;
     bpf_printk("XDP TX\n");
 
     if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct icmphdr) > data_end) {
@@ -163,8 +141,8 @@ int xdp_tx(struct xdp_md* ctx)
     iph = (data + sizeof(struct ethhdr));
     icmph = (data + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
-    if (eth->h_proto != 0x0008) {
-        bpf_printk("NOT Ether frame.\n");
+    if (eth->h_proto != htons(ETH_P_IP)) {
+        bpf_printk("NOT IPv4 frame.\n");
         return XDP_PASS;
     }
 
@@ -184,7 +162,27 @@ int xdp_tx(struct xdp_md* ctx)
     }
 
     bpf_printk("constructing ping\n");
-    construct_pong((struct ethhdr*)data, data_end - data);
+
+    datalen = len - sizeof(struct ethhdr) - sizeof(struct iphdr) - sizeof(struct icmphdr);
+
+    // swap macs
+    memcpy(mac, eth->h_dest, sizeof(mac));
+    memcpy(eth->h_dest, eth->h_source, sizeof(mac));
+    memcpy(eth->h_source, mac, sizeof(mac));
+
+    // build echo reply
+
+    icmph->type = ICMP_ECHOREPLY;
+    icmph->code = 0;
+    icmph->checksum = 0;
+    icmph->checksum = inet_fast_csum(icmph, 2 + datalen);
+
+    // swap ips
+    ipaddr = iph->daddr;
+    iph->daddr = iph->saddr;
+    iph->saddr = ipaddr;
+    iph->check = 0;
+    iph->check = inet_fast_csum(iph, iph->ihl * 4);
     // csum_replace2(&iph->check, htons(old_ttl << 8), htons(iph->ttl << 8));
 
     return XDP_TX;
