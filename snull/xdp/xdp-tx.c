@@ -164,7 +164,7 @@ int xdp_tx(struct xdp_md* ctx)
     icmph = (data + sizeof(struct ethhdr) + sizeof(struct iphdr));
 
     if (eth->h_proto != 0x0008) {
-        bpf_printk("NOT ICMP Packet.\n");
+        bpf_printk("NOT Ether frame.\n");
         return XDP_PASS;
     }
 
@@ -174,7 +174,7 @@ int xdp_tx(struct xdp_md* ctx)
     }
 
     if (iph->protocol != 1) {
-        bpf_printk("NOT ICMP Packet.\n");
+        bpf_printk("NOT ICMP Packet - protocol: %d.\n", iph->protocol);
         return XDP_PASS;
     }
 
