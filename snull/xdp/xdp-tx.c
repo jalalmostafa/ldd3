@@ -183,6 +183,7 @@ int xdp_tx(struct xdp_md* ctx)
         return XDP_DROP;
     }
 
+    bpf_printk("constructing ping\n");
     construct_pong((struct ethhdr*)data, data_end - data);
     // csum_replace2(&iph->check, htons(old_ttl << 8), htons(iph->ttl << 8));
 
