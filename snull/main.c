@@ -374,7 +374,9 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
         spin_lock(&priv->lock);
         priv->stats.tx_packets++;
         priv->stats.tx_bytes += priv->txq.head->datalen;
-        dev_kfree_skb(priv->txq.head->skb);
+        if (!priv->rxq.xdp_prog) {
+            dev_kfree_skb(priv->txq.head->skb);
+        }
         spin_unlock(&priv->lock);
 
         snull_release_tx(priv->txq.head);
