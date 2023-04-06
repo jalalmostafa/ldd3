@@ -318,6 +318,7 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
     case XDP_REDIRECT:
         pr_debug("XDP Redirecting\n");
         err = xdp_do_redirect(dev, &pkt->xbuf, xdp_prog);
+        xdp_do_flush();
         break;
     default:
         pr_debug("XDP Unknown: %u\n", verdict);
