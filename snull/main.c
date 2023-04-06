@@ -352,19 +352,21 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 
     if (statusword & SNULL_RX_INTR) {
         /* send it to snull_rx for handling */
-        pkt = priv->rxq.head;
-        if (pkt) {
-            spin_lock(&priv->lock);
-            priv->rxq.head = pkt->next;
-            if (priv->rxq.xdp_prog) {
-                snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
-            } else {
-                snull_rcv_skb(pkt, false);
-            }
-            snull_release_rx(pkt, !!priv->rxq.xdp_prog);
-
-            spin_unlock(&priv->lock);
+        pkt = READ_ONCE(priv->rxq.head);
+        if (!pkt) {
+            return;
         }
+
+        spin_lock(&priv->lock);
+        priv->rxq.head = pkt->next;
+        spin_unlock(&priv->lock);
+
+        if (priv->rxq.xdp_prog) {
+            snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
+        } else {
+            snull_rcv_skb(pkt, false);
+        }
+        snull_release_rx(pkt, !!priv->rxq.xdp_prog);
     }
 
     if (statusword & SNULL_TX_INTR) {

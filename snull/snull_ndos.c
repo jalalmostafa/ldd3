@@ -46,6 +46,8 @@ static int snull_hw_tx(char* buf, int len, struct net_device* dev, enum snull_pa
     struct snull_packet_tx* tx_buffer;
     char shortpkt[ETH_ZLEN];
 
+    pr_debug("run\n");
+
     if (len < ETH_ZLEN) {
         memset(shortpkt, 0, ETH_ZLEN);
         memcpy(shortpkt, buf, len);
@@ -79,6 +81,8 @@ static int snull_hw_tx(char* buf, int len, struct net_device* dev, enum snull_pa
 
     dest = snull_devs[dev == snull_devs[0] ? 1 : 0];
     priv = netdev_priv(dest);
+    pr_debug("snull_get_tx_buffer\n");
+    // FIXME: it is deadlock here?
     tx_buffer = snull_get_tx_buffer(dev);
 
     if (!tx_buffer) {
