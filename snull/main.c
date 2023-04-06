@@ -171,9 +171,7 @@ void snull_release_rx(struct snull_packet_rx* pkt, bool recycle)
         return;
     }
 
-    // recycle ? page_pool_recycle_direct(priv->rxq.ppool, pkt->page) : page_pool_release_page(priv->rxq.ppool, pkt->page);
-    (void)recycle;
-    page_pool_release_page(priv->rxq.ppool, pkt->page)
+    recycle ? page_pool_recycle_direct(priv->rxq.ppool, pkt->page) : page_pool_release_page(priv->rxq.ppool, pkt->page);
 }
 
 void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx)
@@ -328,6 +326,7 @@ static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
     }
 
     if (err < 0) {
+        pr_debug("err=%d\n", err);
         trace_xdp_exception(dev, xdp_prog, verdict);
     }
 
