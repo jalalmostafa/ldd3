@@ -17,29 +17,45 @@
 #define SNULL_TIMEOUT 5
 #define SNULL_NAPI_WEIGHT 2
 
+enum snull_packet_type {
+    SNULL_PACKET_SKB,
+    SNULL_PACKET_XDP,
+};
+
 struct snull_packet_tx {
     int datalen;
     char* data;
     struct net_device* dev;
-    struct sk_buff* skb;
+    union {
+        struct sk_buff* skb;
+        struct xdp_frame* xframe;
+    };
     struct snull_packet_tx* next;
 };
 
-struct snull_packet_rx {
+struct snull_rx_skb {
     int datalen;
     u8* data;
+};
+
+struct snull_packet_rx {
+    union {
+        struct snull_rx_skb skb;
+        struct xdp_buff xbuf;
+    };
     struct net_device* dev;
     struct page* page;
     struct snull_packet_rx* next;
 };
 
-#define SNULL_RX_HEADROOM (XDP_PACKET_HEADROOM + sizeof(struct snull_packet_rx))
+#define SNULL_XDP_META XDP_PACKET_HEADROOM
+#define SNULL_RX_HEADROOM (SNULL_XDP_META + sizeof(struct snull_packet_rx))
 #define SNULL_RX_BUF_MAXSZ (PAGE_SIZE - SNULL_RX_HEADROOM)
 
 struct snull_rxq {
     struct snull_packet_rx* head;
     struct page_pool* ppool;
-    struct bpf_program* xdp_prog;
+    struct bpf_prog* xdp_prog;
     struct xdp_rxq_info xdp_rq;
 };
 
@@ -75,8 +91,8 @@ int snull_setup_pool(struct net_device* dev);
 void snull_teardown_pool(struct net_device* dev);
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev);
 void snull_release_tx(struct snull_packet_tx* pkt);
-void snull_release_rx(struct snull_packet_rx* pkt);
-
+void snull_release_rx(struct snull_packet_rx* pkt, bool recycle);
+int snull_xdp_xmit_one(struct xdp_frame* xframe, struct net_device* dev);
 void snull_enqueue_buf(struct net_device* dev, struct snull_packet_tx* pkt);
 struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev);
 

@@ -10,11 +10,13 @@
 #include <linux/etherdevice.h>
 #include <net/page_pool.h>
 #include <linux/skbuff.h>
+#include <linux/filter.h>
+#include <linux/bpf_trace.h>
 
 struct net_device* snull_devs[2];
 int timeout;
 int lockup = 0;
-bool use_napi = true;
+bool use_napi = false;
 snull_interrupt_t snull_interrupt;
 int pool_size = 8;
 
@@ -107,14 +109,14 @@ void snull_teardown_pool(struct net_device* dev)
     }
     priv->txq.head = NULL;
 
+    xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
+    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
+
     if (priv->rxq.ppool) {
         page_pool_destroy(priv->rxq.ppool);
         priv->rxq.ppool = NULL;
     }
     priv->rxq.head = NULL;
-
-    xdp_rxq_info_unreg(&priv->rxq.xdp_rq);
-    xdp_rxq_info_unreg_mem_model(&priv->rxq.xdp_rq);
 }
 
 struct snull_packet_tx* snull_get_tx_buffer(struct net_device* dev)
@@ -160,7 +162,7 @@ void snull_release_tx(struct snull_packet_tx* pkt)
         netif_wake_queue(pkt->dev);
 }
 
-void snull_release_rx(struct snull_packet_rx* pkt)
+void snull_release_rx(struct snull_packet_rx* pkt, bool recycle)
 {
     struct snull_priv* priv = netdev_priv(pkt->dev);
 
@@ -169,7 +171,7 @@ void snull_release_rx(struct snull_packet_rx* pkt)
         return;
     }
 
-    page_pool_release_page(priv->rxq.ppool, pkt->page);
+    recycle ? page_pool_recycle_direct(priv->rxq.ppool, pkt->page) : page_pool_release_page(priv->rxq.ppool, pkt->page);
 }
 
 void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx)
@@ -178,9 +180,7 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
     struct snull_priv* priv = netdev_priv(target);
     struct snull_packet_rx* pkt_rx;
     struct page* page;
-    u8* paddr;
-
-    pr_debug("run\n");
+    u8* hardstart;
 
     if (!priv->rxq.ppool) {
         pr_debug("Null Page Pool\n");
@@ -192,13 +192,20 @@ void snull_enqueue_buf(struct net_device* target, struct snull_packet_tx* pkt_tx
         pr_debug("page_pool_dev_alloc_pages returns NULL\n");
         return;
     }
-    paddr = page_address(page);
-    memset(paddr, 0, PAGE_SIZE);
-    pkt_rx = (struct snull_packet_rx*)paddr;
-    pkt_rx->datalen = pkt_tx->datalen;
-    pkt_rx->dev = target;
-    pkt_rx->data = memcpy(paddr + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->datalen);
+    hardstart = page_address(page);
+    memset(hardstart, 0, PAGE_SIZE);
+    pkt_rx = (struct snull_packet_rx*)hardstart;
     pkt_rx->page = page;
+    pkt_rx->dev = target;
+
+    if (READ_ONCE(priv->rxq.xdp_prog)) {
+        xdp_init_buff(&pkt_rx->xbuf, PAGE_SIZE, &priv->rxq.xdp_rq);
+        xdp_prepare_buff(&pkt_rx->xbuf, hardstart, SNULL_RX_HEADROOM, pkt_tx->datalen, false);
+        pkt_rx->xbuf.data = memcpy(hardstart + SNULL_RX_HEADROOM, pkt_tx->data, pkt_tx->datalen);
+    } else {
+        pkt_rx->skb.datalen = pkt_tx->datalen;
+        pkt_rx->skb.data = memcpy(hardstart + SNULL_RX_HEADROOM, pkt_tx->data, pkt_rx->skb.datalen);
+    }
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt_rx->next = priv->rxq.head;
@@ -211,7 +218,6 @@ struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev)
     struct snull_priv* priv = netdev_priv(dev);
     struct snull_packet_rx* pkt;
     unsigned long flags;
-    pr_debug("run\n");
 
     spin_lock_irqsave(&priv->lock, flags);
     pkt = priv->rxq.head;
@@ -221,36 +227,108 @@ struct snull_packet_rx* snull_dequeue_buf(struct net_device* dev)
     return pkt;
 }
 
-void snull_rx_bottom_ints(struct net_device* dev, int enable)
+void snull_rx_top_ints(struct net_device* dev, int enable)
 {
     struct snull_priv* priv = netdev_priv(dev);
     priv->rx_int_enabled = enable;
 }
 
-void snull_rx(struct net_device* dev, struct snull_packet_rx* pkt)
+static struct sk_buff* snull_build_skb(struct snull_packet_rx* pkt)
 {
     struct sk_buff* skb;
-    struct snull_priv* priv = netdev_priv(dev);
+    struct snull_priv* priv = netdev_priv(pkt->dev);
 
-    skb = dev_alloc_skb(pkt->datalen + 2);
+    skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->skb.datalen);
     if (!skb) {
-        if (printk_ratelimit()) {
-            pr_notice("rx low on mem - packet dropped\n");
-        }
-
+        if (printk_ratelimit())
+            pr_notice("low mem - packet dropped\n");
         priv->stats.rx_dropped++;
-        return;
+        return ERR_PTR(-ENOMEM);
     }
 
-    skb_reserve(skb, 2);
-    memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
-    skb->dev = dev;
-    skb->protocol = eth_type_trans(skb, dev);
+    memcpy(skb_put(skb, pkt->skb.datalen), pkt->skb.data, pkt->skb.datalen);
     skb->ip_summed = CHECKSUM_UNNECESSARY;
+    skb->protocol = eth_type_trans(skb, pkt->dev);
 
     priv->stats.rx_packets++;
-    priv->stats.rx_bytes += pkt->datalen;
-    netif_rx(skb);
+    priv->stats.rx_bytes += skb->len;
+
+    return skb;
+}
+
+static int snull_rcv_skb(struct snull_packet_rx* pkt, bool napi)
+{
+    struct sk_buff* skb;
+    skb = snull_build_skb(pkt);
+    if (IS_ERR(skb))
+        return PTR_ERR(skb);
+
+    return napi ? netif_receive_skb(skb) : netif_rx(skb);
+}
+
+static int snull_xdp_pass(struct xdp_buff* xbuf, struct net_device* dev, bool napi)
+{
+    struct xdp_frame* xframe;
+    struct sk_buff* skb;
+
+    xframe = xdp_convert_buff_to_frame(xbuf);
+    pr_debug("xframe %p\n", xframe);
+    skb = xdp_build_skb_from_frame(xframe, dev);
+    if (!skb) {
+        return -ENOMEM;
+    }
+
+    return napi ? netif_receive_skb(skb) : netif_rx(skb);
+}
+
+static int snull_xdp_tx(struct xdp_buff* xbuf, struct net_device* dev)
+{
+    struct xdp_frame* xframe;
+    xframe = xdp_convert_buff_to_frame(xbuf);
+    return snull_xdp_xmit_one(xframe, dev);
+}
+
+static int snull_rcv_xdp(struct bpf_prog* xdp_prog, struct snull_packet_rx* pkt,
+    struct net_device* dev, bool napi)
+{
+    int err = 0;
+    u32 verdict;
+
+    verdict = bpf_prog_run_xdp(xdp_prog, &pkt->xbuf);
+
+    switch (verdict) {
+    case XDP_ABORTED:
+        pr_debug("XDP Aborting\n");
+        err = -1;
+        break;
+    case XDP_DROP:
+        pr_debug("XDP Dropping\n");
+        break;
+    case XDP_PASS:
+        pr_debug("XDP Passing\n");
+        err = snull_xdp_pass(&pkt->xbuf, dev, napi);
+        break;
+    case XDP_TX:
+        pr_debug("XDP TXing\n");
+        err = snull_xdp_tx(&pkt->xbuf, dev);
+        break;
+    case XDP_REDIRECT:
+        pr_debug("XDP Redirecting\n");
+        err = xdp_do_redirect(dev, &pkt->xbuf, xdp_prog);
+        xdp_do_flush();
+        break;
+    default:
+        pr_debug("XDP Unknown: %u\n", verdict);
+        bpf_warn_invalid_xdp_action(verdict);
+        break;
+    }
+
+    if (err < 0) {
+        pr_debug("err=%d\n", err);
+        trace_xdp_exception(dev, xdp_prog, verdict);
+    }
+
+    return err;
 }
 
 static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
@@ -258,8 +336,8 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     int statusword;
     struct snull_priv* priv;
     struct snull_packet_rx* pkt = NULL;
-
     struct net_device* dev = (struct net_device*)dev_id;
+
     if (!dev)
         return;
 
@@ -272,14 +350,21 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
 
     if (statusword & SNULL_RX_INTR) {
         /* send it to snull_rx for handling */
-        pkt = priv->rxq.head;
-        if (pkt) {
-            spin_lock(&priv->lock);
-            priv->rxq.head = pkt->next;
-            snull_rx(dev, pkt);
-            spin_unlock(&priv->lock);
-            snull_release_rx(pkt);
+        pkt = READ_ONCE(priv->rxq.head);
+        if (!pkt) {
+            return;
         }
+
+        spin_lock(&priv->lock);
+        priv->rxq.head = pkt->next;
+        spin_unlock(&priv->lock);
+
+        if (priv->rxq.xdp_prog) {
+            snull_rcv_xdp(priv->rxq.xdp_prog, pkt, dev, false);
+        } else {
+            snull_rcv_skb(pkt, false);
+        }
+        snull_release_rx(pkt, !!priv->rxq.xdp_prog);
     }
 
     if (statusword & SNULL_TX_INTR) {
@@ -287,7 +372,9 @@ static void snull_regular_interrupt(int irq, void* dev_id, struct pt_regs* regs)
         spin_lock(&priv->lock);
         priv->stats.tx_packets++;
         priv->stats.tx_bytes += priv->txq.head->datalen;
-        dev_kfree_skb(priv->txq.head->skb);
+        if (!priv->rxq.xdp_prog) {
+            dev_kfree_skb(priv->txq.head->skb);
+        }
         spin_unlock(&priv->lock);
 
         snull_release_tx(priv->txq.head);
@@ -298,10 +385,10 @@ static int snull_poll(struct napi_struct* napi, int budget)
 {
     int npackets = 0;
     unsigned long flags;
-    struct sk_buff* skb;
+    struct snull_packet_rx* pkt;
     struct net_device* dev = napi->dev;
     struct snull_priv* priv = netdev_priv(dev);
-    struct snull_packet_rx* pkt;
+    struct bpf_prog* xdp_prog = READ_ONCE(priv->rxq.xdp_prog);
 
     while (npackets < budget && priv->rxq.head) {
         pkt = snull_dequeue_buf(dev);
@@ -310,34 +397,22 @@ static int snull_poll(struct napi_struct* napi, int budget)
             break;
         }
 
-        skb = netdev_alloc_skb_ip_align(pkt->dev, pkt->datalen);
-        if (!skb) {
-            if (printk_ratelimit())
-                pr_notice("packet dropped\n");
-            priv->stats.rx_dropped++;
-            goto next;
+        if (xdp_prog) {
+            snull_rcv_xdp(xdp_prog, pkt, dev, true);
+            snull_release_rx(pkt, true);
+        } else {
+            snull_rcv_skb(pkt, true);
+            snull_release_rx(pkt, false);
         }
 
-        memcpy(skb_put(skb, pkt->datalen), pkt->data, pkt->datalen);
-        skb->ip_summed = CHECKSUM_UNNECESSARY;
-        skb->protocol = eth_type_trans(skb, dev);
-
-        netif_receive_skb(skb);
-
-        priv->stats.rx_packets++;
-        priv->stats.rx_bytes += pkt->datalen;
-
-    next:
-        pr_debug("next\n");
         npackets++;
-        snull_release_rx(pkt);
     }
 
     /* If we processed all packets, we're done; tell the kernel and reenable ints */
     if (npackets < budget) {
         spin_lock_irqsave(&priv->lock, flags);
         if (napi_complete_done(napi, npackets))
-            snull_rx_bottom_ints(dev, 1);
+            snull_rx_top_ints(dev, 1);
         spin_unlock_irqrestore(&priv->lock, flags);
     }
 
@@ -356,14 +431,13 @@ static void snull_napi_interrupt(int irq, void* dev_id, struct pt_regs* regs)
     priv = netdev_priv(dev);
 
     spin_lock(&priv->lock);
-
     statusword = priv->status;
     priv->status = 0;
     spin_unlock(&priv->lock);
 
     if (statusword & SNULL_RX_INTR && napi_schedule_prep(&priv->napi)) {
-        // disable bottom interrupts because when there is at least one packet available then no need to fire this again just tell NAPI, at least there is one packet available for fetching.
-        snull_rx_bottom_ints(dev, 0);
+        // disable top interrupts because when there is at least one packet available then no need to fire this again just tell NAPI, at least there is one packet available for fetching.
+        snull_rx_top_ints(dev, 0);
         // snull_rx call is deffered/scheduled to snull_poll, that is managed by NAPI budget
         __napi_schedule(&priv->napi);
     }
@@ -413,7 +487,7 @@ static void snull_dev_init(struct net_device* dev)
         netif_napi_add(dev, &priv->napi, snull_poll, SNULL_NAPI_WEIGHT);
     }
     spin_lock_init(&priv->lock);
-    snull_rx_bottom_ints(dev, 1);
+    snull_rx_top_ints(dev, 1);
     snull_setup_pool(dev);
 }
 

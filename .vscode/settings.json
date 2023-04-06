@@ -2,6 +2,7 @@
     "files.associations": {
         "*.props": "xml",
         "*.targets": "xml",
+<<<<<<< HEAD
         "kdev_t.h": "c",
         "slab.h": "c",
         "scull.h": "c",
@@ -15,5 +16,9 @@
         "netdevice.h": "c",
         "ip.h": "c",
         "tcp.h": "c"
+=======
+        "*.h": "c",
+        "*.c": "c"
+>>>>>>> xdp
     }
 }

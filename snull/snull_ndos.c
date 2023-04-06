@@ -37,24 +37,25 @@ int snull_stop(struct net_device* dev)
     return 0;
 }
 
-static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_device* dev)
+static int snull_hw_tx(char* buf, int len, struct net_device* dev, enum snull_packet_type type, void* skb)
 {
-    /*
-     * This function deals with hw details. This interface loops
-     * back the packet to the other snull interface (if any).
-     * In other words, this function implements the snull behaviour,
-     * while all other procedures are rather device-independent
-     */
     struct iphdr* ih;
     struct net_device* dest;
     struct snull_priv* priv;
     u32 *saddr, *daddr;
     struct snull_packet_tx* tx_buffer;
+    char shortpkt[ETH_ZLEN];
+
+    if (len < ETH_ZLEN) {
+        memset(shortpkt, 0, ETH_ZLEN);
+        memcpy(shortpkt, buf, len);
+        len = ETH_ZLEN;
+        buf = shortpkt;
+    }
 
     if (len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
-        pr_err("packet too short (%i octets)\n",
-            len);
-        return;
+        pr_err("packet too short (%i octets)\n", len);
+        return -EINVAL;
     }
 
     ih = (struct iphdr*)(buf + sizeof(struct ethhdr));
@@ -78,11 +79,23 @@ static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_devi
 
     dest = snull_devs[dev == snull_devs[0] ? 1 : 0];
     priv = netdev_priv(dest);
+
     tx_buffer = snull_get_tx_buffer(dev);
 
     if (!tx_buffer) {
         pr_info("Out of tx buffer, len is %i\n", len);
-        return;
+        return -EBUSY;
+    }
+
+    switch (type) {
+    case SNULL_PACKET_SKB:
+        tx_buffer->skb = skb;
+        break;
+    case SNULL_PACKET_XDP:
+        tx_buffer->xframe = skb;
+        break;
+    default:
+        break;
     }
 
     tx_buffer->skb = skb;
@@ -106,24 +119,19 @@ static void snull_hw_tx(struct sk_buff* skb, char* buf, int len, struct net_devi
             (unsigned long)priv->stats.tx_packets);
     } else
         snull_interrupt(0, dev, NULL);
+
+    return 0;
 }
+
+#define snull_hw_tx_skb(skb, dev) snull_hw_tx(skb->data, skb->len, dev, SNULL_PACKET_SKB, skb);
+
+#define snull_hw_tx_xdp(xframe, dev) snull_hw_tx(xframe->data, xframe->len, dev, SNULL_PACKET_XDP, xframe);
 
 netdev_tx_t snull_xmit(struct sk_buff* skb, struct net_device* dev)
 {
-    int len = skb->len;
-    char *data = skb->data, shortpkt[ETH_ZLEN];
-    pr_debug("run\n");
-
-    if (len < ETH_ZLEN) {
-        memset(shortpkt, 0, ETH_ZLEN);
-        memcpy(shortpkt, skb->data, skb->len);
-        len = ETH_ZLEN;
-        data = shortpkt;
-    }
-
+    int err = snull_hw_tx_skb(skb, dev);
     netif_trans_update(dev);
-    snull_hw_tx(skb, data, len, dev);
-    return NETDEV_TX_OK;
+    return err ? NETDEV_TX_BUSY : NETDEV_TX_OK;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 6, 0)
@@ -160,8 +168,6 @@ int snull_ioctl(struct net_device* dev, struct ifreq* ifr, int cmd)
 
 int snull_config(struct net_device* dev, struct ifmap* map)
 {
-    pr_debug("run\n");
-
     if (dev->flags & IFF_UP) /* can't act on a running interface */
         return -EBUSY;
 
@@ -199,11 +205,24 @@ int snull_change_mtu(struct net_device* dev, int new_mtu)
 
 static int snull_xdp_set(struct net_device* dev, struct netdev_bpf* bpf)
 {
+    struct snull_priv* priv = netdev_priv(dev);
+    struct bpf_prog* old_prog;
+    unsigned long flags;
+
     if (dev->mtu > SNULL_RX_BUF_MAXSZ) {
         pr_warn("MTU %u is too big. Must be less then or equal to %lu\n", dev->mtu, SNULL_RX_BUF_MAXSZ);
         return -EINVAL;
     }
 
+    spin_lock_irqsave(&priv->lock, flags);
+    old_prog = priv->rxq.xdp_prog;
+    priv->rxq.xdp_prog = bpf->prog;
+
+    if (old_prog) {
+        bpf_prog_put(old_prog);
+    }
+
+    spin_unlock_irqrestore(&priv->lock, flags);
     return 0;
 }
 
@@ -220,9 +239,34 @@ int snull_xdp(struct net_device* dev, struct netdev_bpf* bpf)
     return -EINVAL;
 }
 
+int snull_xdp_xmit_one(struct xdp_frame* xframe, struct net_device* dev)
+{
+    return snull_hw_tx_xdp(xframe, dev);
+}
+
 int snull_xdp_xmit(struct net_device* dev, int n, struct xdp_frame** xdp, u32 flags)
 {
-    return -EINVAL;
+    int i, nxmit;
+    struct xdp_frame* xframe;
+    struct snull_priv* priv;
+
+    if (flags & ~XDP_XMIT_FLAGS_MASK) {
+        return -EINVAL;
+    }
+
+    priv = netdev_priv(dev);
+
+    for (i = 0; i < n; i++) {
+        xframe = xdp[i];
+        if (!xframe)
+            continue;
+
+        if (snull_xdp_xmit_one(xframe, dev))
+            break;
+        nxmit++;
+    }
+
+    return nxmit;
 }
 
 int snull_xsk_wakeup(struct net_device* dev, u32 queue_id, u32 flags)
